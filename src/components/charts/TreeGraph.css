@@ -1,0 +1,101 @@
+.tree-container {
+  position: relative;
+  width: 100%;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.tree-node {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tree-node:hover {
+  filter: brightness(1.1);
+}
+
+.tree-label {
+  font-family: system-ui, -apple-system, sans-serif;
+  transition: all 0.3s ease;
+}
+
+.tree-label:hover {
+  font-weight: bold;
+}
+
+.tree-edge {
+  transition: stroke-width 0.3s ease;
+}
+
+.tree-edge:hover {
+  stroke-width: 2px;
+}
+
+.tree-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+.tree-control-button {
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.tree-control-button:hover {
+  background: #f5f5f5;
+  border-color: #999;
+}
+
+.tree-tooltip {
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 4px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  max-width: 300px;
+}
+
+.tree-tooltip-title {
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: #333;
+  font-size: 14px;
+}
+
+.tree-tooltip-detail {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Styles responsifs */
+@media (max-width: 768px) {
+  .tree-container {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .tree-controls {
+    position: relative;
+    top: 0;
+    right: 0;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .tree-tooltip {
+    max-width: 250px;
+  }
+} 

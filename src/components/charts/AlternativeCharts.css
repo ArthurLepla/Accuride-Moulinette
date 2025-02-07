@@ -1,0 +1,110 @@
+.alternative-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+}
+
+.visualization-section {
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.visualization-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+  padding: 1.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.visualization-description {
+  font-size: 0.875rem;
+  color: #666;
+  margin: 0;
+  padding: 0 1.5rem 1.5rem;
+}
+
+/* Styles communs pour les tooltips */
+.tooltip-content {
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 0.875rem;
+  max-width: 300px;
+}
+
+.tooltip-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: #1a1a1a;
+}
+
+.tooltip-detail {
+  color: #666;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+/* Styles responsifs */
+@media (max-width: 768px) {
+  .alternative-charts {
+    gap: 1rem;
+    padding: 0.5rem;
+  }
+
+  .visualization-section {
+    border-radius: 0.5rem;
+  }
+
+  .visualization-title {
+    font-size: 1.125rem;
+    padding: 1rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .visualization-description {
+    padding: 0 1rem 1rem;
+  }
+
+  .tooltip-content {
+    max-width: 250px;
+  }
+}
+
+/* Thème sombre */
+@media (prefers-color-scheme: dark) {
+  .alternative-charts {
+    background: #1a1a1a;
+  }
+
+  .visualization-section {
+    background: #2d2d2d;
+  }
+
+  .visualization-title {
+    color: #fff;
+  }
+
+  .visualization-description {
+    color: #999;
+  }
+
+  .tooltip-content {
+    background: rgba(45, 45, 45, 0.98);
+  }
+
+  .tooltip-title {
+    color: #fff;
+  }
+
+  .tooltip-detail {
+    color: #999;
+  }
+} 
