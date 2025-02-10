@@ -1,4 +1,9 @@
-import { AuthConfig } from './types';
+export interface AuthConfig {
+  baseUrl: string;
+  token: string;
+  iedIp: string;
+  authToken: string;
+}
 
 export function getAuthConfig(): AuthConfig | null {
   if (typeof window === 'undefined') return null;
@@ -28,10 +33,13 @@ export function isAuthenticated(): boolean {
 
 // Fonction utilitaire pour obtenir la configuration depuis les headers de la requête
 export function getAuthConfigFromHeaders(headers: Headers): AuthConfig | null {
+  const authConfigHeader = headers.get('X-Auth-Config');
+  if (!authConfigHeader) {
+    return null;
+  }
+
   try {
-    const authHeader = headers.get('X-Auth-Config');
-    if (!authHeader) return null;
-    return JSON.parse(authHeader);
+    return JSON.parse(authConfigHeader);
   } catch {
     return null;
   }

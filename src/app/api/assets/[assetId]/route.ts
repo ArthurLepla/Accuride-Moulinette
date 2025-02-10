@@ -3,12 +3,6 @@ import https from 'https';
 import nodeFetch from 'node-fetch';
 import { getAuthConfigFromHeaders } from '@/lib/auth';
 
-const getBaseUrl = (request: Request) => {
-  const authConfig = getAuthConfigFromHeaders(request.headers);
-  if (!authConfig) throw new Error('Non authentifié');
-  return `https://${authConfig.iedIp}/iih-essentials`;
-};
-
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
@@ -18,17 +12,17 @@ export async function GET(
   { params }: { params: { assetId: string } }
 ) {
   try {
-    const assetId = await Promise.resolve(params.assetId);
-    const url = new URL(request.url);
-    const includeChildren = url.searchParams.get('includeChildren') === 'true';
-
     const authConfig = getAuthConfigFromHeaders(request.headers);
     if (!authConfig) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
+    const assetId = await Promise.resolve(params.assetId);
+    const url = new URL(request.url);
+    const includeChildren = url.searchParams.get('includeChildren') === 'true';
+
     const response = await nodeFetch(
-      `${getBaseUrl(request)}/AssetService/Assets/${assetId === '0' ? 'Root' : assetId}${url.searchParams.toString() ? `?${url.searchParams.toString()}` : ''}`,
+      `https://${authConfig.iedIp}/iih-essentials/AssetService/Assets/${assetId}${includeChildren ? '?includeChildren=true' : ''}`,
       {
         method: 'GET',
         headers: {
@@ -47,12 +41,6 @@ export async function GET(
         status: response.status,
         body: errorText
       });
-      
-      // Si l'asset n'est pas trouvé, retourner un tableau vide de children
-      if (response.status === 404) {
-        return NextResponse.json({ children: [] });
-      }
-      
       return NextResponse.json(
         { error: `Erreur API: ${response.status} - ${errorText}` },
         { status: response.status }
@@ -70,28 +58,59 @@ export async function GET(
   }
 }
 
-export async function POST(request: Request, { params }: { params: { assetId: string } }) {
-    try {
-        const data = await request.json();
-        
-        // Votre logique d'importation existante
-        const authConfig = getAuthConfigFromHeaders(request.headers);
-        if (!authConfig) {
-            return new Response(JSON.stringify({ error: 'Non authentifié' }), {
-                status: 401,
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
-
-        return new Response(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-        });
-    } catch (error) {
-        console.error('Error in POST:', error);
-        return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' },
-        });
+export async function POST(request: Request) {
+  try {
+    const data = await request.json();
+    const authConfig = getAuthConfigFromHeaders(request.headers);
+    if (!authConfig) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
+
+    console.log('Données reçues pour création asset:', data);
+
+    const formattedData = {
+      name: data.name,
+      parentId: data.parentId,
+      type: data.type,
+      description: data.description || '',
+      locked: false,
+      aspects: []
+    };
+
+    console.log('Données formatées pour IIH:', formattedData);
+
+    const response = await nodeFetch(
+      `https://${authConfig.iedIp}/iih-essentials/AssetService/Assets`,
+      {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authConfig.authToken}`,
+          'Host': authConfig.iedIp
+        },
+        agent: httpsAgent,
+        body: JSON.stringify(formattedData)
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Erreur lors de la création de l\'asset:', errorText);
+      return NextResponse.json(
+        { error: `Erreur API: ${response.status} - ${errorText}` },
+        { status: response.status }
+      );
+    }
+
+    const responseData = await response.json();
+    console.log('Asset créé avec succès:', responseData);
+    return NextResponse.json(responseData);
+  } catch (error: any) {
+    console.error('Erreur proxy API:', error);
+    return NextResponse.json(
+      { error: error.message || 'Erreur interne du serveur' },
+      { status: 500 }
+    );
+  }
 } 

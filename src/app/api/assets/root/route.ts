@@ -7,34 +7,30 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
     const authConfig = getAuthConfigFromHeaders(request.headers);
     if (!authConfig) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    const data = await request.json();
-    console.log('Données reçues pour création agrégation:', data);
-
     const response = await nodeFetch(
-      `https://${authConfig.iedIp}/iih-essentials/DataService/Aggregations`,
+      `https://${authConfig.iedIp}/iih-essentials/AssetService/Assets/Root`,
       {
-        method: 'POST',
+        method: 'GET',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authConfig.authToken}`,
           'Host': authConfig.iedIp
         },
-        agent: httpsAgent,
-        body: JSON.stringify(data)
+        agent: httpsAgent
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur création agrégation:', {
+      console.error('Erreur récupération asset racine:', {
         status: response.status,
         body: errorText
       });
@@ -44,9 +40,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const responseData = await response.json();
-    console.log('Agrégation créée avec succès:', responseData);
-    return NextResponse.json(responseData);
+    const data = await response.json();
+    return NextResponse.json(data);
   } catch (error: any) {
     console.error('Erreur proxy API:', error);
     return NextResponse.json(

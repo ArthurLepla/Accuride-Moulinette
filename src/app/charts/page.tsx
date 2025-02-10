@@ -2,211 +2,143 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { SankeyChart } from '@/components/charts/SankeyChart';
-import { TreemapChart } from '@/components/charts/TreemapChart';
-import { TreeGraph } from '@/components/charts/TreeGraph';
-import { isAuthenticated } from '@/lib/auth';
-
-interface ExcelAsset {
-  sector: string;
-  workshop: string | null;
-  machine: string;
-  variables?: any;
-}
-
-interface SankeyData {
-  nodes: Array<{
-    id: string;
-    name: string;
-    category: 'sector' | 'workshop' | 'machine';
-    value?: number;
-  }>;
-  links: Array<{
-    source: string;
-    target: string;
-    value: number;
-  }>;
-}
+import AppLayout from '@/components/layout/AppLayout';
+import FlexibleSankeyChart from '@/components/charts/FlexibleSankeyChart';
+import { HierarchyData } from '@/types/sankey';
+import { ArrowLeft } from 'lucide-react';
 
 export default function ChartsPage() {
   const router = useRouter();
-  const [data, setData] = useState<SankeyData | null>(null);
-  const [activeTab, setActiveTab] = useState<'sankey' | 'treemap' | 'tree'>('sankey');
+  const [hierarchyData, setHierarchyData] = useState<HierarchyData | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/');
+    const iihStructure = localStorage.getItem('iihStructure');
+    if (!iihStructure) {
+      router.push('/dashboard');
       return;
     }
 
-    const storedData = localStorage.getItem('excelData');
-    if (storedData) {
-      try {
-        const excelData = JSON.parse(storedData) as ExcelAsset[];
-        
-        // Maps pour stocker les éléments uniques
-        const sectorsMap = new Map<string, { name: string; machineCount: number }>();
-        const workshopsMap = new Map<string, { name: string; sectorId: string; machineCount: number }>();
-        const machinesMap = new Map<string, { name: string; workshopId: string | null; sectorId: string }>();
-
-        // Première passe : collecter tous les éléments uniques
-        excelData.forEach((asset) => {
-          const sectorId = `sector-${asset.sector}`;
-          const workshopId = asset.workshop ? `workshop-${asset.workshop}` : null;
-          const machineId = `machine-${asset.machine}`;
-
-          // Ajouter/mettre à jour le secteur
-          if (!sectorsMap.has(sectorId)) {
-            sectorsMap.set(sectorId, { name: asset.sector, machineCount: 0 });
-          }
-          sectorsMap.get(sectorId)!.machineCount++;
-
-          // Ajouter/mettre à jour l'atelier si présent
-          if (workshopId) {
-            if (!workshopsMap.has(workshopId)) {
-              workshopsMap.set(workshopId, { 
-                name: asset.workshop!, 
-                sectorId, 
-                machineCount: 0 
-              });
-            }
-            workshopsMap.get(workshopId)!.machineCount++;
-          }
-
-          // Ajouter la machine
-          machinesMap.set(machineId, {
-            name: asset.machine,
-            workshopId,
-            sectorId
-          });
-        });
-
-        // Créer les nœuds
-        const nodes = [
-          // Secteurs
-          ...Array.from(sectorsMap.entries()).map(([id, { name, machineCount }]) => ({
-            id,
-            name,
-            category: 'sector' as const,
-            value: machineCount
-          })),
-          // Ateliers
-          ...Array.from(workshopsMap.entries()).map(([id, { name, machineCount }]) => ({
-            id,
-            name,
-            category: 'workshop' as const,
-            value: machineCount
-          })),
-          // Machines
-          ...Array.from(machinesMap.entries()).map(([id, { name }]) => ({
-            id,
-            name,
-            category: 'machine' as const,
-            value: 1
-          }))
-        ];
-
-        // Créer les liens
-        const links = [
-          // Liens Secteur -> Atelier
-          ...Array.from(workshopsMap.entries()).map(([workshopId, { sectorId }]) => ({
-            source: sectorId,
-            target: workshopId,
-            value: 1
-          })),
-          // Liens vers les machines
-          ...Array.from(machinesMap.entries()).map(([machineId, { workshopId, sectorId }]) => ({
-            source: workshopId || sectorId, // Si pas d'atelier, lier directement au secteur
-            target: machineId,
-            value: 1
-          }))
-        ];
-
-        setData({ nodes, links });
-      } catch (error) {
-        console.error('Erreur lors du traitement des données:', error);
-      }
+    try {
+      const data = JSON.parse(iihStructure);
+      setHierarchyData(data.hierarchyData);
+    } catch (error) {
+      console.error('Erreur lors du chargement des données:', error);
+      router.push('/dashboard');
     }
   }, [router]);
 
-  const handleBack = () => {
-    router.push('/dashboard');
-  };
-
-  if (!data) {
+  if (!hierarchyData) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white">
-          Aucune donnée disponible. Veuillez d'abord importer un fichier Excel.
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-900 p-8">
+    <AppLayout>
       <div className="max-w-[1800px] mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-white">Visualisation des Assets</h1>
-          <button
-            onClick={handleBack}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          >
-            Retour au dashboard
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="p-2 text-white hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="h-6 w-6" />
+            </button>
+            <h1 className="text-3xl font-bold text-white">Visualisation de la Structure</h1>
+          </div>
         </div>
 
-        <div className="flex gap-4 mb-8">
-          <button
-            onClick={() => setActiveTab('sankey')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              activeTab === 'sankey'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            Diagramme Sankey
-          </button>
-          <button
-            onClick={() => setActiveTab('treemap')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              activeTab === 'treemap'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            Treemap
-          </button>
-          <button
-            onClick={() => setActiveTab('tree')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              activeTab === 'tree'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            Arbre hiérarchique
-          </button>
-        </div>
+        <div className="space-y-8">
+          {/* Sankey Chart */}
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-white mb-6">Diagramme de Flux Hiérarchique</h2>
+            <div className="bg-gray-900 rounded-lg p-4">
+              <FlexibleSankeyChart data={hierarchyData} />
+            </div>
+          </div>
 
-        <div className="bg-white rounded-lg shadow-xl p-6 min-h-[800px]">
-          {activeTab === 'sankey' && (
-            <div className="h-full">
-              <SankeyChart data={data} />
+          {/* Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Total des Niveaux</h3>
+              <p className="text-3xl font-bold text-blue-400">{hierarchyData.levels.length}</p>
             </div>
-          )}
-          {activeTab === 'treemap' && (
-            <div className="h-full">
-              <TreemapChart data={data} />
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Total des Nœuds</h3>
+              <p className="text-3xl font-bold text-blue-400">{hierarchyData.nodes.length}</p>
             </div>
-          )}
-          {activeTab === 'tree' && (
-            <div className="h-full">
-              <TreeGraph data={data} />
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Total des Connexions</h3>
+              <p className="text-3xl font-bold text-blue-400">{hierarchyData.links.length}</p>
             </div>
-          )}
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Moyenne de Connexions</h3>
+              <p className="text-3xl font-bold text-blue-400">
+                {(hierarchyData.links.length / hierarchyData.nodes.length).toFixed(1)}
+              </p>
+            </div>
+          </div>
+
+          {/* Level Details */}
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-white mb-6">Détails par Niveau</h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead className="bg-gray-900">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Niveau
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Nombre de Nœuds
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Connexions Entrantes
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Connexions Sortantes
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-gray-800 divide-y divide-gray-700">
+                  {hierarchyData.levels.map((level, index) => {
+                    const nodesAtLevel = hierarchyData.nodes.filter(n => n.level === level.level);
+                    const incomingLinks = hierarchyData.links.filter(l => {
+                      const targetNode = hierarchyData.nodes.find(n => n.id === l.target);
+                      return targetNode?.level === level.level;
+                    });
+                    const outgoingLinks = hierarchyData.links.filter(l => {
+                      const sourceNode = hierarchyData.nodes.find(n => n.id === l.source);
+                      return sourceNode?.level === level.level;
+                    });
+
+                    return (
+                      <tr key={index} className={index % 2 === 0 ? 'bg-gray-900' : ''}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {level.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {nodesAtLevel.length}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {incomingLinks.length}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {outgoingLinks.length}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
-    </main>
+    </AppLayout>
   );
 } 

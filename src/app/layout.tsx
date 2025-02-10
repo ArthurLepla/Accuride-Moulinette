@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { Providers } from './providers';
+import { ProfileProvider } from '@/contexts/ProfileContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'IIH Asset Explorer',
-  description: 'Interface de gestion des assets IIH',
+  title: 'Smart Energy - Asset Explorer',
+  description: 'Application de gestion des assets énergétiques',
 };
 
 export default function RootLayout({
@@ -18,9 +18,9 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={inter.className}>
-        <Providers>
+        <ProfileProvider>
           {children}
-        </Providers>
+        </ProfileProvider>
       </body>
     </html>
   );
