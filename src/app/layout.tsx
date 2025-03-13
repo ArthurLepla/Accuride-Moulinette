@@ -6,8 +6,8 @@ import { ProfileProvider } from '@/contexts/ProfileContext';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Smart Energy - Asset Explorer',
-  description: 'Application de gestion des assets énergétiques',
+  title: 'Accuride - Moulinette',
+  description: 'Convertisseur de données Accuride',
 };
 
 export default function RootLayout({

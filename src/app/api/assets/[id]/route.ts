@@ -1,12 +1,25 @@
 import { NextResponse } from 'next/server';
 import https from 'https';
 import nodeFetch from 'node-fetch';
-import { getAuthConfigFromHeaders } from '@/lib/auth';
+import { getAuthConfigFromHeaders, getBaseUrl } from '@/lib/auth';
 import { headers } from 'next/headers';
 
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
+
+// Log conditionnel qui ne s'affiche que si le mode debug est activé
+function logDebug(message: string, data?: any) {
+  // On peut activer/désactiver les logs de debug en modifiant cette condition
+  const DEBUG = false;
+  if (DEBUG) {
+    if (data) {
+      console.log(`[DEBUG API] ${message}`, data);
+    } else {
+      console.log(`[DEBUG API] ${message}`);
+    }
+  }
+}
 
 export async function GET(
   request: Request,
@@ -30,7 +43,7 @@ export async function GET(
     const includeChildren = request.url.includes('includeChildren=true');
     
     const url = `https://${config.iedIp}/iih-essentials/AssetService/Assets/${id}${includeChildren ? '?includeChildren=true' : ''}`;
-    console.log('Tentative de connexion à:', url);
+    logDebug('Tentative de connexion à', url);
 
     const response = await nodeFetch(url, {
       method: 'GET',
@@ -53,7 +66,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
-    console.error('Erreur lors de la récupération de l\'asset:', error);
+    console.error(`❌ Erreur récupération asset ${id}:`, error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Une erreur est survenue' },
       { status: 500 }
@@ -69,7 +82,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    console.log('Données reçues pour création asset:', data);
+    logDebug('Données reçues pour création asset', data);
 
     const formattedData = {
       name: data.name,
@@ -80,7 +93,7 @@ export async function POST(request: Request) {
       aspects: []
     };
 
-    console.log('Données formatées pour IIH:', formattedData);
+    logDebug('Données formatées pour IIH', formattedData);
 
     const response = await nodeFetch(
       `https://${authConfig.iedIp}/iih-essentials/AssetService/Assets`,
@@ -99,7 +112,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur lors de la création de l\'asset:', errorText);
+      console.error(`⚠️ Erreur création asset ${data.name}:`, response.status, errorText);
       return NextResponse.json(
         { error: `Erreur API: ${response.status} - ${errorText}` },
         { status: response.status }
@@ -107,10 +120,10 @@ export async function POST(request: Request) {
     }
 
     const responseData = await response.json();
-    console.log('Asset créé avec succès:', responseData);
+    console.log(`✅ Asset créé: ${responseData.name} (${responseData.assetId})`);
     return NextResponse.json(responseData);
   } catch (error: any) {
-    console.error('Erreur proxy API:', error);
+    console.error('❌ Erreur proxy API:', error.message);
     return NextResponse.json(
       { error: error.message || 'Erreur interne du serveur' },
       { status: 500 }

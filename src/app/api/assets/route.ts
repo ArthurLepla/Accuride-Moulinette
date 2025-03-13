@@ -2,17 +2,24 @@ import { NextResponse } from 'next/server';
 import https from 'https';
 import { IIHAssetBase, IIHAssetResponse } from '@/types/assets';
 import nodeFetch from 'node-fetch';
-import { getAuthConfigFromHeaders } from '@/lib/auth';
-
-const getBaseUrl = (request: Request) => {
-  const authConfig = getAuthConfigFromHeaders(request.headers);
-  if (!authConfig) throw new Error('Non authentifié');
-  return `https://${authConfig.iedIp}/iih-essentials`;
-};
+import { getAuthConfigFromHeaders, getBaseUrl } from '@/lib/auth';
 
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
+
+// Log conditionnel qui ne s'affiche que si le mode debug est activé
+function logDebug(message: string, data?: any) {
+  // On peut activer/désactiver les logs de debug en modifiant cette condition
+  const DEBUG = false;
+  if (DEBUG) {
+    if (data) {
+      console.log(`[DEBUG API] ${message}`, data);
+    } else {
+      console.log(`[DEBUG API] ${message}`);
+    }
+  }
+}
 
 export async function GET(request: Request) {
   try {
@@ -78,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
-    console.log('Donn��es reçues pour création asset:', data);
+    logDebug('Données reçues pour création asset', data);
 
     // Adapter les données au format attendu par l'API IIH
     const iihAssetData = {
@@ -90,7 +97,7 @@ export async function POST(request: Request) {
       aspects: []
     };
 
-    console.log('Données formatées pour IIH:', iihAssetData);
+    logDebug('Données formatées pour IIH', iihAssetData);
 
     const response = await nodeFetch(
       `${getBaseUrl(request)}/AssetService/Assets`,
@@ -109,11 +116,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Erreur création asset:', {
-        status: response.status,
-        headers: Object.fromEntries(response.headers),
-        body: errorData
-      });
+      console.error(`⚠️ Erreur création asset ${data.name}:`, response.status, errorData);
       return NextResponse.json(
         { error: `Erreur API: ${response.status} - ${errorData}` },
         { status: response.status }
@@ -121,10 +124,10 @@ export async function POST(request: Request) {
     }
 
     const responseData = await response.json();
-    console.log('Asset créé avec succès:', responseData);
+    console.log(`✅ Asset créé: ${responseData.name} (${responseData.assetId})`);
     return NextResponse.json(responseData);
   } catch (error: any) {
-    console.error('Erreur proxy API:', error);
+    console.error('❌ Erreur proxy API:', error.message);
     return NextResponse.json(
       { error: error.message || 'Erreur interne du serveur' },
       { status: 500 }

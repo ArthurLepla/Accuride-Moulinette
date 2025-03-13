@@ -64,17 +64,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full space-y-8">
-        {/* Logo et titre */}
+        {/* Titre */}
         <div className="text-center space-y-4">
-          <div className="relative w-full h-40 mb-6">
-            <Image
-              src="/logo/Atlas_Core_Layout_Logo_Smart_Energy_ANNUT.png"
-              alt="Smart Energy"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+          <h1 className="text-4xl font-bold text-gray-800">Accuride Moulinette</h1>
           <p className="text-xl text-gray-600">Qui utilise l'application ?</p>
         </div>
 
@@ -108,17 +100,9 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* Logo DV Group */}
+        {/* DV Group */}
         <div className="text-center mt-12">
-          <div className="relative w-48 h-12 mx-auto">
-            <Image
-              src="/logo/ok_claim-logo-horizontal (1).png"
-              alt="DV Group"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+          <p className="text-lg font-medium text-gray-700">DV Group</p>
         </div>
       </div>
     </div>

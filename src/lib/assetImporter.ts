@@ -35,6 +35,58 @@ interface IIHMachine extends IIHAssetBase {
       };
     };
   };
+  productionKgVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  productionQuantiteVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  ipeKgVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  ipeQuantiteVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
   productionVariable?: {
     id: string;
     name: string;
@@ -73,12 +125,129 @@ interface IIHWorkshop extends IIHAssetBase {
   machines: {
     [key: string]: IIHMachine;
   };
+  ipeKgVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  ipeQuantiteVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  productionKgVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  productionQuantiteVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  consommationVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
 }
 
 interface IIHSector extends IIHAssetBase {
   type: 'sector';
   workshops: {
     [key: string]: IIHWorkshop;
+  };
+  ipeKgVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  ipeQuantiteVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  productionKgVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
+  };
+  productionQuantiteVariable?: {
+    id: string;
+    name: string;
+    aggregations?: {
+      [key: string]: {
+        id: string;
+        cycle: {
+          base: string;
+          factor: number;
+        };
+      };
+    };
   };
 }
 
@@ -281,6 +450,311 @@ async function createIPEVariable(machineName: string, assetId: string) {
   );
 }
 
+// Nouvelles fonctions pour les variables modifiées
+async function createProductionKgVariable(machineName: string, assetId: string) {
+  return await createVariable(
+    `Production_kg_${machineName}`,
+    assetId,
+    '',
+    'FLOAT32',
+    'kg',
+    `Production en kg pour la machine ${machineName}`
+  );
+}
+
+async function createProductionQuantiteVariable(machineName: string, assetId: string) {
+  return await createVariable(
+    `Production_quantite_${machineName}`,
+    assetId,
+    '',
+    'FLOAT32',
+    'pcs',
+    `Production en quantité pour la machine ${machineName}`
+  );
+}
+
+async function createIPEKgVariable(machineName: string, assetId: string) {
+  return await createVariable(
+    `IPE_kg_${machineName}`,
+    assetId,
+    '',
+    'FLOAT32',
+    'kWh/kg',
+    `Indicateur de performance énergétique en kg pour la machine ${machineName}`
+  );
+}
+
+async function createIPEQuantiteVariable(machineName: string, assetId: string) {
+  return await createVariable(
+    `IPE_quantite_${machineName}`,
+    assetId,
+    '',
+    'FLOAT32',
+    'kWh/pcs',
+    `Indicateur de performance énergétique en quantité pour la machine ${machineName}`
+  );
+}
+
+// Fonction pour créer une transformation (variable calculée à partir d'autres variables)
+async function configureTransformation(params: {
+  name: string;
+  targetAssetId: string;
+  sourceVariableIds: string[];
+  formula: string;
+  unit?: string;
+}) {
+  try {
+    console.log(`📊 Configuration d'une variable de transformation (Rule) pour ${params.name}`);
+    console.log(`    → Asset cible: ${params.targetAssetId}`);
+    console.log(`    → Variables sources: ${params.sourceVariableIds.join(', ')}`);
+    console.log(`    → Formule: ${params.formula}`);
+    
+    const authConfig = getAuthConfig();
+    if (!authConfig) {
+      throw new Error('Non authentifié');
+    }
+
+    // Récupérer les informations sur les variables sources pour créer les tags
+    const tags = [];
+    
+    for (let i = 0; i < params.sourceVariableIds.length; i++) {
+      const variableId = params.sourceVariableIds[i];
+      
+      // Dans une implémentation réelle, nous devrions récupérer les informations complètes sur la variable
+      // Pour l'instant, nous simulons avec des valeurs génériques conformes à la doc IIH
+      tags.push({
+        name: `var${i+1}`,  // var1, var2, etc. utilisé dans la formule
+        variableId: variableId, // ID de la variable source
+        dataType: "FLOAT32"
+      });
+    }
+    
+    // Construction de la requête de création de variable avec règle
+    // Structure conforme à la documentation IIH
+    const transformationBody = {
+      variableName: params.name,
+      assetId: params.targetAssetId,
+      dataType: "FLOAT32",
+      description: `Variable de transformation ${params.name}`,
+      unit: params.unit || "",
+      store: true,
+      sourceType: "Rule",  // Type "Rule" pour les transformations
+      rule: {
+        formula: params.formula,  // Formule de transformation ex: "var1 + var2"
+        variables: tags  // Variables référencées dans la formule
+      },
+      connected: true
+    };
+    
+    console.log('Données de transformation (Rule):', transformationBody);
+    
+    // Dans une implémentation réelle, nous ferions l'appel à l'API ici
+    const response = await fetch('/api/variables', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'X-Auth-Config': JSON.stringify(authConfig)
+      },
+      body: JSON.stringify(transformationBody)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Erreur lors de la création de la variable de transformation:`, errorText);
+      throw new Error(`Erreur lors de la création de la variable de transformation: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Variable de transformation (Rule) créée avec succès:', result);
+    return result;
+  } catch (error) {
+    console.error(`❌ Erreur lors de la configuration de la variable de transformation (Rule): ${error}`);
+    throw error;
+  }
+}
+
+// Mise à jour de la fonction createConsommationAggregeeVariable pour utiliser la nouvelle approche de transformation
+async function createConsommationAggregeeVariable(assetName: string, assetId: string, childrenVariableIds: string[]) {
+  try {
+    console.log(`📍 Création de la variable de consommation agrégée pour ${assetName} (avant-dernier niveau)`);
+    
+    // Si nous avons des IDs de variables enfants, créer une variable de transformation
+    if (childrenVariableIds.length > 0) {
+      console.log(`📊 Configuration de la transformation pour agréger les consommations des enfants: ${childrenVariableIds.join(', ')}`);
+      
+      // Construire la formule en fonction du nombre de variables sources
+      // Par exemple: "var1 + var2 + var3" pour 3 variables sources
+      const formula = childrenVariableIds.map((_, index) => `var${index + 1}`).join(' + ');
+      
+      // Configurer la transformation pour sommer les variables enfants
+      const transformationResult = await configureTransformation({
+        name: `Consommation_${assetName}`,
+        targetAssetId: assetId,
+        sourceVariableIds: childrenVariableIds,
+        formula: formula,
+        unit: 'kWh'
+      });
+      
+      console.log(`✅ Variable de consommation agrégée créée par transformation avec ID: ${transformationResult.variableId}`);
+      return transformationResult;
+    } else {
+      // Si pas de variables enfants, créer une variable normale
+      console.log(`⚠️ Pas de variables enfants à agréger pour la consommation de ${assetName}`);
+      
+      const aggregationVarResponse = await createVariable(
+        `Consommation_${assetName}`,
+        assetId,
+        '',
+        'FLOAT32',
+        'kWh',
+        `Consommation agrégée pour ${assetName} (aucune source pour l'instant)`
+      );
+      
+      console.log(`✅ Variable de consommation agrégée créée pour ${assetName} avec ID: ${aggregationVarResponse.variableId}`);
+      return aggregationVarResponse;
+    }
+  } catch (error) {
+    console.error(`❌ Erreur lors de la création de la variable de consommation agrégée: ${error}`);
+    throw error;
+  }
+}
+
+// Fonction pour créer les attributs des niveaux intermédiaires (sauf niveau 1)
+async function createIntermediateAssetAttributes(
+  assetName: string, 
+  assetId: string, 
+  isSecondLastLevel: boolean = false, 
+  childrenConsumptionVariableIds: string[] = []
+) {
+  try {
+    console.log(`📍 Création des attributs pour le niveau intermédiaire: ${assetName}`);
+    
+    // Création des variables IPE et Production
+    const ipeKgVariable = await createIPEKgVariable(assetName, assetId);
+    console.log(`✅ Variable IPE (kg) créée avec l'ID: ${ipeKgVariable.variableId}`);
+    
+    const ipeQuantiteVariable = await createIPEQuantiteVariable(assetName, assetId);
+    console.log(`✅ Variable IPE (quantité) créée avec l'ID: ${ipeQuantiteVariable.variableId}`);
+    
+    const productionKgVariable = await createProductionKgVariable(assetName, assetId);
+    console.log(`✅ Variable Production (kg) créée avec l'ID: ${productionKgVariable.variableId}`);
+    
+    const productionQuantiteVariable = await createProductionQuantiteVariable(assetName, assetId);
+    console.log(`✅ Variable Production (quantité) créée avec l'ID: ${productionQuantiteVariable.variableId}`);
+    
+    let consommationVariable = null;
+    
+    // Pour l'avant-dernier niveau, créer également la variable de consommation
+    if (isSecondLastLevel) {
+      console.log(`📊 Pour le niveau ${assetName} (avant-dernier niveau), création de la variable de consommation agrégée`);
+      if (childrenConsumptionVariableIds.length > 0) {
+        console.log(`📊 Variables de consommation enfants qui seront agrégées: ${childrenConsumptionVariableIds.join(', ')}`);
+      } else {
+        console.log(`⚠️ Aucune variable de consommation enfant disponible pour l'agrégation`);
+      }
+      
+      consommationVariable = await createConsommationAggregeeVariable(assetName, assetId, childrenConsumptionVariableIds);
+      console.log(`✅ Variable Consommation créée avec l'ID: ${consommationVariable.variableId}`);
+    }
+    
+    // Créer les agrégations
+    console.log(`📊 Création des agrégations pour le niveau intermédiaire: ${assetName}`);
+    const ipeKgAggregations: { [key: string]: any } = {};
+    const ipeQuantiteAggregations: { [key: string]: any } = {};
+    const productionKgAggregations: { [key: string]: any } = {};
+    const productionQuantiteAggregations: { [key: string]: any } = {};
+    const consommationAggregations: { [key: string]: any } = {};
+    
+    // Intervalles de temps pour les agrégations
+    const timeIntervals = [
+      { name: '5min', base: 'minute', factor: 5 },
+      { name: '1h', base: 'hour', factor: 1 },
+      { name: '4h', base: 'hour', factor: 4 },
+      { name: '8h', base: 'hour', factor: 8 },
+      { name: '1d', base: 'day', factor: 1 }
+    ];
+    
+    for (const interval of timeIntervals) {
+      // Agrégations IPE et Production
+      const aggIPEKg = await createAggregation(ipeKgVariable.variableId, 'Sum', interval.base, interval.factor);
+      ipeKgAggregations[interval.name] = {
+        id: aggIPEKg.id,
+        type: 'Sum',
+        cycle: { base: interval.base, factor: interval.factor }
+      };
+      
+      const aggIPEQuantite = await createAggregation(ipeQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
+      ipeQuantiteAggregations[interval.name] = {
+        id: aggIPEQuantite.id,
+        type: 'Sum',
+        cycle: { base: interval.base, factor: interval.factor }
+      };
+      
+      const aggProdKg = await createAggregation(productionKgVariable.variableId, 'Sum', interval.base, interval.factor);
+      productionKgAggregations[interval.name] = {
+        id: aggProdKg.id,
+        type: 'Sum',
+        cycle: { base: interval.base, factor: interval.factor }
+      };
+      
+      const aggProdQuantite = await createAggregation(productionQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
+      productionQuantiteAggregations[interval.name] = {
+        id: aggProdQuantite.id,
+        type: 'Sum',
+        cycle: { base: interval.base, factor: interval.factor }
+      };
+      
+      // Agrégation de consommation pour l'avant-dernier niveau
+      if (isSecondLastLevel && consommationVariable) {
+        const aggConso = await createAggregation(consommationVariable.variableId, 'Sum', interval.base, interval.factor);
+        consommationAggregations[interval.name] = {
+          id: aggConso.id,
+          type: 'Sum',
+          cycle: { base: interval.base, factor: interval.factor }
+        };
+      }
+    }
+    
+    // Préparer et retourner les informations sur les variables créées
+    const result: any = {
+      ipeKgVariable: {
+        id: ipeKgVariable.variableId,
+        name: `IPE_kg_${assetName}`,
+        aggregations: ipeKgAggregations
+      },
+      ipeQuantiteVariable: {
+        id: ipeQuantiteVariable.variableId,
+        name: `IPE_quantite_${assetName}`,
+        aggregations: ipeQuantiteAggregations
+      },
+      productionKgVariable: {
+        id: productionKgVariable.variableId,
+        name: `Production_kg_${assetName}`,
+        aggregations: productionKgAggregations
+      },
+      productionQuantiteVariable: {
+        id: productionQuantiteVariable.variableId,
+        name: `Production_quantite_${assetName}`,
+        aggregations: productionQuantiteAggregations
+      }
+    };
+    
+    if (isSecondLastLevel && consommationVariable) {
+      result.consommationVariable = {
+        id: consommationVariable.variableId,
+        name: `Consommation_${assetName}`,
+        aggregations: consommationAggregations
+      };
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`❌ Erreur lors de la création des attributs pour le niveau intermédiaire: ${error}`);
+    throw error;
+  }
+}
+
 async function createSensorStateVariable(machineName: string, assetId: string) {
   console.log(`Création de la variable d'état pour la machine ${machineName} avec assetId ${assetId}`);
   const variable = await createVariable(
@@ -321,10 +795,13 @@ async function createAggregation(variableId: string, aggregationType: string, ba
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`Erreur lors de la création de l'agrégation pour la variable ${variableId}:`, errorText);
     throw new Error(`Erreur lors de la création de l'agrégation pour la variable ${variableId}: ${errorText}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  console.log(`✅ Agrégation créée avec succès pour la variable ${variableId}: ${result.id}`);
+  return result;
 }
 
 export async function importAssetsFromExcel(data: ExcelData[]) {
@@ -346,6 +823,9 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
         }[];
       };
     } = {};
+
+    // Après avoir créé une machine dans un atelier, stocker la variable de consommation
+    let workshopConsumptionVariables: { [workshopKey: string]: string[] } = {};
 
     // Traiter chaque ligne du fichier Excel
     for (const item of data) {
@@ -372,13 +852,19 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
           );
           console.log(`      ✅ Variable de consommation créée avec l'ID: ${consumptionVariable.variableId}`);
 
-          // Variable de production
-          const productionVariable = await createProductionVariable(sanitizedMachineName, machineAsset.assetId);
-          console.log(`      ✅ Variable de production créée avec l'ID: ${productionVariable.variableId}`);
+          // Variables de production (kg et quantité)
+          const productionKgVariable = await createProductionKgVariable(sanitizedMachineName, machineAsset.assetId);
+          console.log(`      ✅ Variable de production (kg) créée avec l'ID: ${productionKgVariable.variableId}`);
 
-          // Variable IPE
-          const ipeVariable = await createIPEVariable(sanitizedMachineName, machineAsset.assetId);
-          console.log(`      ✅ Variable IPE créée avec l'ID: ${ipeVariable.variableId}`);
+          const productionQuantiteVariable = await createProductionQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
+          console.log(`      ✅ Variable de production (quantité) créée avec l'ID: ${productionQuantiteVariable.variableId}`);
+
+          // Variables IPE (kg et quantité)
+          const ipeKgVariable = await createIPEKgVariable(sanitizedMachineName, machineAsset.assetId);
+          console.log(`      ✅ Variable IPE (kg) créée avec l'ID: ${ipeKgVariable.variableId}`);
+
+          const ipeQuantiteVariable = await createIPEQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
+          console.log(`      ✅ Variable IPE (quantité) créée avec l'ID: ${ipeQuantiteVariable.variableId}`);
 
           // Variable d'état du capteur
           const stateVariable = await createSensorStateVariable(sanitizedMachineName, machineAsset.assetId);
@@ -392,10 +878,12 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
           // Créer les agrégations
           console.log(`        📍 Création des agrégations pour: ${sanitizedMachineName}`);
           const aggregations: { [key: string]: any } = {};
-          const productionAggregations: { [key: string]: any } = {};
-          const ipeAggregations: { [key: string]: any } = {};
+          const productionKgAggregations: { [key: string]: any } = {};
+          const productionQuantiteAggregations: { [key: string]: any } = {};
+          const ipeKgAggregations: { [key: string]: any } = {};
+          const ipeQuantiteAggregations: { [key: string]: any } = {};
 
-          // Agrégations pour consommation, production et IPE
+          // Agrégations pour les différentes variables
           const timeIntervals = [
             { name: '5min', base: 'minute', factor: 5 },
             { name: '1h', base: 'hour', factor: 1 },
@@ -413,18 +901,34 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               cycle: { base: interval.base, factor: interval.factor }
             };
 
-            // Agrégation production
-            const aggProd = await createAggregation(productionVariable.variableId, 'Sum', interval.base, interval.factor);
-            productionAggregations[interval.name] = {
-              id: aggProd.id,
+            // Agrégation production (kg)
+            const aggProdKg = await createAggregation(productionKgVariable.variableId, 'Sum', interval.base, interval.factor);
+            productionKgAggregations[interval.name] = {
+              id: aggProdKg.id,
               type: 'Sum',
               cycle: { base: interval.base, factor: interval.factor }
             };
 
-            // Agrégation IPE
-            const aggIPE = await createAggregation(ipeVariable.variableId, 'Sum', interval.base, interval.factor);
-            ipeAggregations[interval.name] = {
-              id: aggIPE.id,
+            // Agrégation production (quantité)
+            const aggProdQuantite = await createAggregation(productionQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
+            productionQuantiteAggregations[interval.name] = {
+              id: aggProdQuantite.id,
+              type: 'Sum',
+              cycle: { base: interval.base, factor: interval.factor }
+            };
+
+            // Agrégation IPE (kg)
+            const aggIPEKg = await createAggregation(ipeKgVariable.variableId, 'Sum', interval.base, interval.factor);
+            ipeKgAggregations[interval.name] = {
+              id: aggIPEKg.id,
+              type: 'Sum',
+              cycle: { base: interval.base, factor: interval.factor }
+            };
+
+            // Agrégation IPE (quantité)
+            const aggIPEQuantite = await createAggregation(ipeQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
+            ipeQuantiteAggregations[interval.name] = {
+              id: aggIPEQuantite.id,
               type: 'Sum',
               cycle: { base: interval.base, factor: interval.factor }
             };
@@ -454,15 +958,25 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               name: `Consommation_${item.type}_${sanitizedMachineName}`,
               aggregations: aggregations
             },
-            productionVariable: {
-              id: productionVariable.variableId,
-              name: `Production_${sanitizedMachineName}`,
-              aggregations: productionAggregations
+            productionKgVariable: {
+              id: productionKgVariable.variableId,
+              name: `Production_kg_${sanitizedMachineName}`,
+              aggregations: productionKgAggregations
             },
-            ipeVariable: {
-              id: ipeVariable.variableId,
-              name: `IPE_${sanitizedMachineName}`,
-              aggregations: ipeAggregations
+            productionQuantiteVariable: {
+              id: productionQuantiteVariable.variableId,
+              name: `Production_quantite_${sanitizedMachineName}`,
+              aggregations: productionQuantiteAggregations
+            },
+            ipeKgVariable: {
+              id: ipeKgVariable.variableId,
+              name: `IPE_kg_${sanitizedMachineName}`,
+              aggregations: ipeKgAggregations
+            },
+            ipeQuantiteVariable: {
+              id: ipeQuantiteVariable.variableId,
+              name: `IPE_quantite_${sanitizedMachineName}`,
+              aggregations: ipeQuantiteAggregations
             },
             stateVariable: {
               variableId: stateVariable.variableId,
@@ -494,18 +1008,35 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
             type: 'sector'
           });
 
+          console.log(`📍 Création des attributs pour le secteur: ${sanitizedSectorName} (niveau intermédiaire)`);
+          // Le secteur est un niveau intermédiaire, mais pas l'avant-dernier niveau
+          // Il reçoit donc les attributs standards des niveaux intermédiaires, mais pas la consommation
+          const sectorAttributes = await createIntermediateAssetAttributes(
+            sanitizedSectorName, 
+            sectorAsset.assetId,
+            false, // Ce n'est pas l'avant-dernier niveau
+            [] // Pas de variables de consommation enfants
+          );
+
           iihStructure.sectors[sanitizedSectorName] = {
             id: sectorAsset.id,
             assetId: sectorAsset.assetId,
             name: sectorAsset.name,
             type: 'sector',
-            workshops: {}
+            workshops: {},
+            // Ajout des attributs intermédiaires
+            ...sectorAttributes
           };
         }
 
         // Gérer l'atelier (utiliser 'sans_atelier' si non spécifié)
         const workshopName = item.workshop || 'Sans atelier';
         const sanitizedWorkshopName = sanitizeAssetName(workshopName);
+        
+        // Initialiser le tableau des variables de consommation pour cet atelier s'il n'existe pas
+        if (!workshopConsumptionVariables[sanitizedWorkshopName]) {
+          workshopConsumptionVariables[sanitizedWorkshopName] = [];
+        }
 
         if (!iihStructure.sectors[sanitizedSectorName].workshops[sanitizedWorkshopName]) {
           const workshopAsset = await createOrGetAsset({
@@ -515,12 +1046,26 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
             type: 'workshop'
           });
 
+          console.log(`📍 Création des attributs pour l'atelier: ${sanitizedWorkshopName} (niveau intermédiaire)`);
+          // L'atelier est généralement l'avant-dernier niveau avant les machines
+          // On lui donne donc les attributs intermédiaires + consommation
+          // Note: On ne peut pas encore passer les variables de consommation car les machines n'existent pas
+          // On les collectera plus tard
+          const workshopAttributes = await createIntermediateAssetAttributes(
+            sanitizedWorkshopName, 
+            workshopAsset.assetId,
+            true, // C'est l'avant-dernier niveau, donc on crée aussi la variable de consommation
+            [] // Pour l'instant, pas de variables de consommation enfants
+          );
+
           iihStructure.sectors[sanitizedSectorName].workshops[sanitizedWorkshopName] = {
             id: workshopAsset.id,
             assetId: workshopAsset.assetId,
             name: workshopAsset.name,
             type: 'workshop',
-            machines: {}
+            machines: {},
+            // Ajout des attributs intermédiaires
+            ...workshopAttributes
           };
         }
 
@@ -546,14 +1091,24 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               item.type
             );
             console.log(`      ✅ Variable de consommation créée avec l'ID: ${consumptionVariable.variableId}`);
+            
+            // Ajouter l'ID de la variable de consommation à la liste pour cet atelier
+            workshopConsumptionVariables[sanitizedWorkshopName].push(consumptionVariable.variableId);
+            console.log(`      ✅ Variable de consommation ajoutée à la liste pour l'atelier ${sanitizedWorkshopName}`);
 
-            // Variable de production
-            const productionVariable = await createProductionVariable(sanitizedMachineName, machineAsset.assetId);
-            console.log(`      ✅ Variable de production créée avec l'ID: ${productionVariable.variableId}`);
+            // Variables de production (kg et quantité)
+            const productionKgVariable = await createProductionKgVariable(sanitizedMachineName, machineAsset.assetId);
+            console.log(`      ✅ Variable de production (kg) créée avec l'ID: ${productionKgVariable.variableId}`);
 
-            // Variable IPE
-            const ipeVariable = await createIPEVariable(sanitizedMachineName, machineAsset.assetId);
-            console.log(`      ✅ Variable IPE créée avec l'ID: ${ipeVariable.variableId}`);
+            const productionQuantiteVariable = await createProductionQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
+            console.log(`      ✅ Variable de production (quantité) créée avec l'ID: ${productionQuantiteVariable.variableId}`);
+
+            // Variables IPE (kg et quantité)
+            const ipeKgVariable = await createIPEKgVariable(sanitizedMachineName, machineAsset.assetId);
+            console.log(`      ✅ Variable IPE (kg) créée avec l'ID: ${ipeKgVariable.variableId}`);
+
+            const ipeQuantiteVariable = await createIPEQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
+            console.log(`      ✅ Variable IPE (quantité) créée avec l'ID: ${ipeQuantiteVariable.variableId}`);
 
             // Variable d'état du capteur
             const stateVariable = await createSensorStateVariable(sanitizedMachineName, machineAsset.assetId);
@@ -567,10 +1122,12 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
             // Créer les agrégations
             console.log(`        📍 Création des agrégations pour: ${sanitizedMachineName}`);
             const aggregations: { [key: string]: any } = {};
-            const productionAggregations: { [key: string]: any } = {};
-            const ipeAggregations: { [key: string]: any } = {};
+            const productionKgAggregations: { [key: string]: any } = {};
+            const productionQuantiteAggregations: { [key: string]: any } = {};
+            const ipeKgAggregations: { [key: string]: any } = {};
+            const ipeQuantiteAggregations: { [key: string]: any } = {};
 
-            // Agrégations pour consommation, production et IPE
+            // Agrégations pour les différentes variables
             const timeIntervals = [
               { name: '5min', base: 'minute', factor: 5 },
               { name: '1h', base: 'hour', factor: 1 },
@@ -588,18 +1145,34 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
                 cycle: { base: interval.base, factor: interval.factor }
               };
 
-              // Agrégation production
-              const aggProd = await createAggregation(productionVariable.variableId, 'Sum', interval.base, interval.factor);
-              productionAggregations[interval.name] = {
-                id: aggProd.id,
+              // Agrégation production (kg)
+              const aggProdKg = await createAggregation(productionKgVariable.variableId, 'Sum', interval.base, interval.factor);
+              productionKgAggregations[interval.name] = {
+                id: aggProdKg.id,
                 type: 'Sum',
                 cycle: { base: interval.base, factor: interval.factor }
               };
 
-              // Agrégation IPE
-              const aggIPE = await createAggregation(ipeVariable.variableId, 'Sum', interval.base, interval.factor);
-              ipeAggregations[interval.name] = {
-                id: aggIPE.id,
+              // Agrégation production (quantité)
+              const aggProdQuantite = await createAggregation(productionQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
+              productionQuantiteAggregations[interval.name] = {
+                id: aggProdQuantite.id,
+                type: 'Sum',
+                cycle: { base: interval.base, factor: interval.factor }
+              };
+
+              // Agrégation IPE (kg)
+              const aggIPEKg = await createAggregation(ipeKgVariable.variableId, 'Sum', interval.base, interval.factor);
+              ipeKgAggregations[interval.name] = {
+                id: aggIPEKg.id,
+                type: 'Sum',
+                cycle: { base: interval.base, factor: interval.factor }
+              };
+
+              // Agrégation IPE (quantité)
+              const aggIPEQuantite = await createAggregation(ipeQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
+              ipeQuantiteAggregations[interval.name] = {
+                id: aggIPEQuantite.id,
                 type: 'Sum',
                 cycle: { base: interval.base, factor: interval.factor }
               };
@@ -629,15 +1202,25 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
                 name: `Consommation_${item.type}_${sanitizedMachineName}`,
                 aggregations: aggregations
               },
-              productionVariable: {
-                id: productionVariable.variableId,
-                name: `Production_${sanitizedMachineName}`,
-                aggregations: productionAggregations
+              productionKgVariable: {
+                id: productionKgVariable.variableId,
+                name: `Production_kg_${sanitizedMachineName}`,
+                aggregations: productionKgAggregations
               },
-              ipeVariable: {
-                id: ipeVariable.variableId,
-                name: `IPE_${sanitizedMachineName}`,
-                aggregations: ipeAggregations
+              productionQuantiteVariable: {
+                id: productionQuantiteVariable.variableId,
+                name: `Production_quantite_${sanitizedMachineName}`,
+                aggregations: productionQuantiteAggregations
+              },
+              ipeKgVariable: {
+                id: ipeKgVariable.variableId,
+                name: `IPE_kg_${sanitizedMachineName}`,
+                aggregations: ipeKgAggregations
+              },
+              ipeQuantiteVariable: {
+                id: ipeQuantiteVariable.variableId,
+                name: `IPE_quantite_${sanitizedMachineName}`,
+                aggregations: ipeQuantiteAggregations
               },
               stateVariable: {
                 variableId: stateVariable.variableId,
@@ -654,6 +1237,36 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               }
             });
           }
+        }
+      }
+    }
+
+    // Une fois toutes les machines créées, mettre à jour les transformations pour les ateliers
+    console.log(`\n📊 Configuration des transformations pour les variables de consommation des ateliers`);
+    for (const [sectorName, sector] of Object.entries(iihStructure.sectors)) {
+      for (const [workshopName, workshop] of Object.entries(sector.workshops)) {
+        if (workshopConsumptionVariables[workshopName] && workshopConsumptionVariables[workshopName].length > 0 && workshop.consommationVariable) {
+          console.log(`📊 Configuration de la transformation pour l'atelier ${workshopName} avec ${workshopConsumptionVariables[workshopName].length} variables sources`);
+          
+          try {
+            // Générer la formule dynamiquement en fonction du nombre de variables
+            const formula = workshopConsumptionVariables[workshopName]
+              .map((_, index) => `var${index + 1}`)
+              .join(' + ');
+            
+            await configureTransformation({
+              name: `Somme_Consommation_${workshopName}`,
+              targetAssetId: workshop.assetId, // Utiliser l'assetId de l'atelier et non l'ID de la variable
+              sourceVariableIds: workshopConsumptionVariables[workshopName],
+              formula: formula,
+              unit: 'kWh'
+            });
+            console.log(`✅ Transformation configurée avec succès pour l'atelier ${workshopName}`);
+          } catch (error) {
+            console.error(`❌ Erreur lors de la configuration de la transformation pour l'atelier ${workshopName}: ${error}`);
+          }
+        } else {
+          console.log(`⚠️ Pas de variables de consommation disponibles pour l'atelier ${workshopName}`);
         }
       }
     }

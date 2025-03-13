@@ -43,4 +43,11 @@ export function getAuthConfigFromHeaders(headers: Headers): AuthConfig | null {
   } catch {
     return null;
   }
-} 
+}
+
+// Fonction pour obtenir l'URL de base de l'API IIH
+export const getBaseUrl = (request: Request) => {
+  const authConfig = getAuthConfigFromHeaders(request.headers);
+  if (!authConfig) throw new Error('Non authentifié');
+  return `https://${authConfig.iedIp}/iih-essentials`;
+}; 
