@@ -1036,12 +1036,16 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
       ).filter(n => n !== undefined) as HierarchyNode[];
 
       // Variables pour stocker tous les attributs
-      let consoVar: any = null;
       let prodVar: any = null;
       let prodKgVar: any = null;
       let ipeVar: any = null;
       let ipeKgVar: any = null;
       let stateVar: any = null;
+      // Variables de consommation par type d'énergie
+      let consoElecVar: any = null;
+      let consoGazVar: any = null;
+      let consoEauVar: any = null;
+      let consoAirVar: any = null;
 
       // Ajouter des attributs pour tous les niveaux sauf le premier
       if (!isFirstLevel) {
@@ -1060,17 +1064,62 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
           // Créer les variables - Utiliser des promises indépendantes pour chaque variable
           // mais les traiter une par une pour éviter les problèmes de verrou de base de données
           
-          // Variable de consommation - seulement pour le dernier niveau
+          // Variables de consommation - seulement pour le dernier niveau
           if (isLastLevel) {
-            const consoVarName = `Consommation_${energyType}_${sanitizeAssetName(node.name)}`;
-            consoVar = await createOrGetVariable(
+            // Au lieu d'une seule variable de consommation, créer une variable pour chaque type d'énergie
+            // mais marquer celle qui correspond au type détecté comme la principale
+            
+            const consoElecVarName = `Consommation_Elec_${sanitizeAssetName(node.name)}`;
+            consoElecVar = await createOrGetVariable(
               asset.assetId,
-              consoVarName,
+              consoElecVarName,
               'FLOAT32',
-              getUnitForEnergyType(energyType),
-              'Consommation énergétique',
+              getUnitForEnergyType('Elec'),
+              'Consommation électrique',
               true
             );
+            
+            // Pause pour réduire la contention
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const consoGazVarName = `Consommation_Gaz_${sanitizeAssetName(node.name)}`;
+            consoGazVar = await createOrGetVariable(
+              asset.assetId,
+              consoGazVarName,
+              'FLOAT32',
+              getUnitForEnergyType('Gaz'),
+              'Consommation de gaz',
+              true
+            );
+            
+            // Pause pour réduire la contention
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const consoEauVarName = `Consommation_Eau_${sanitizeAssetName(node.name)}`;
+            consoEauVar = await createOrGetVariable(
+              asset.assetId,
+              consoEauVarName,
+              'FLOAT32',
+              getUnitForEnergyType('Eau'),
+              'Consommation d\'eau',
+              true
+            );
+            
+            // Pause pour réduire la contention
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const consoAirVarName = `Consommation_Air_${sanitizeAssetName(node.name)}`;
+            consoAirVar = await createOrGetVariable(
+              asset.assetId,
+              consoAirVarName,
+              'FLOAT32',
+              getUnitForEnergyType('Air'),
+              'Consommation d\'air comprimé',
+              true
+            );
+            
+            // Pause pour réduire la contention
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
 
           // Variables de production pour tous les niveaux sauf le premier
@@ -1159,10 +1208,59 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
             type: isLastLevel ? 'machine' : 'group',
             levelPosition, // Stocker la position du niveau
             totalLevels,   // Stocker le nombre total de niveaux
-            variable: consoVar ? {
-              id: consoVar.variableId,
-              name: consoVar.variableName,
-              aggregations: consoVar.aggregations ? Object.entries(consoVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
+            variable_elec: consoElecVar ? {
+              id: consoElecVar.variableId,
+              name: consoElecVar.variableName,
+              energyType: 'Elec',
+              aggregations: consoElecVar.aggregations ? Object.entries(consoElecVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
+                ...acc,
+                [key]: {
+                  id: agg.id,
+                  type: agg.type,
+                  cycle: {
+                    base: agg.cycle.base,
+                    factor: agg.cycle.factor
+                  }
+                }
+              }), {}) : undefined
+            } : undefined,
+            variable_gaz: consoGazVar ? {
+              id: consoGazVar.variableId,
+              name: consoGazVar.variableName,
+              energyType: 'Gaz',
+              aggregations: consoGazVar.aggregations ? Object.entries(consoGazVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
+                ...acc,
+                [key]: {
+                  id: agg.id,
+                  type: agg.type,
+                  cycle: {
+                    base: agg.cycle.base,
+                    factor: agg.cycle.factor
+                  }
+                }
+              }), {}) : undefined
+            } : undefined,
+            variable_eau: consoEauVar ? {
+              id: consoEauVar.variableId,
+              name: consoEauVar.variableName,
+              energyType: 'Eau',
+              aggregations: consoEauVar.aggregations ? Object.entries(consoEauVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
+                ...acc,
+                [key]: {
+                  id: agg.id,
+                  type: agg.type,
+                  cycle: {
+                    base: agg.cycle.base,
+                    factor: agg.cycle.factor
+                  }
+                }
+              }), {}) : undefined
+            } : undefined,
+            variable_air: consoAirVar ? {
+              id: consoAirVar.variableId,
+              name: consoAirVar.variableName,
+              energyType: 'Air',
+              aggregations: consoAirVar.aggregations ? Object.entries(consoAirVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
                 ...acc,
                 [key]: {
                   id: agg.id,
@@ -1290,105 +1388,100 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
         const childLinks = hierarchyData.links.filter(link => link.source === nodeId);
         const childNodeIds = childLinks.map(link => link.target);
         
-        // Déterminer le type d'énergie
-        let energyType = node.metadata?.energyType || 'Unknown';
-        if (energyType === 'Unknown') {
-          const name = node.name.toLowerCase();
-          if (name.includes('elec') || name.includes('électric')) energyType = 'Elec';
-          else if (name.includes('gaz')) energyType = 'Gaz';
-          else if (name.includes('eau')) energyType = 'Eau';
-          else if (name.includes('air') || name.includes('comprim')) energyType = 'Air';
-        }
+        // Pour chaque type d'énergie, créer une variable dédiée
+        const energyTypes = ['Elec', 'Gaz', 'Eau', 'Air'];
         
-        // Récupérer les variables de consommation des enfants
-        const childConsumptionVariables = [];
-        
-        // Récupérer les informations des variables enfants en parallèle
-        const childVariablePromises = childNodeIds.map(async childId => {
-          const childNodeInfo = nodeMap.get(childId);
-          if (childNodeInfo) {
-            const childNode = childNodeInfo.node;
-            const childAsset = childNodeInfo.asset;
-            
-            // Chercher la variable de consommation de cet enfant
-            const childVarName = `Consommation_${energyType}_${sanitizeAssetName(childNode.name)}`;
-            const childVars = await getExistingVariable(childAsset.assetId, childVarName);
-            
-            if (childVars) {
-              console.log(`📊 Trouvé variable de consommation pour l'enfant ${childNode.name}: ${childVars.variableName}`);
-              return {
-                name: `var${childConsumptionVariables.length + 1}`,
-                variableId: childVars.variableId,
-                variableName: childVars.variableName
-              };
-            } else {
-              console.log(`⚠️ Variable de consommation non trouvée pour l'enfant ${childNode.name}`);
-              return null;
+        // Récupérer les variables de consommation par type d'énergie
+        for (const energyType of energyTypes) {
+          const consoVarName = `Consommation_${energyType}_${sanitizeAssetName(node.name)}`;
+          console.log(`📊 Création de la règle de consommation pour ${energyType}: ${consoVarName}`);
+          
+          // Récupérer les variables enfants de ce type d'énergie
+          const childConsumptionVariables = [];
+          
+          // Récupérer les informations des variables enfants en parallèle
+          const childVariablePromises = childNodeIds.map(async childId => {
+            const childNodeInfo = nodeMap.get(childId);
+            if (childNodeInfo) {
+              const childNode = childNodeInfo.node;
+              const childAsset = childNodeInfo.asset;
+              
+              // Chercher la variable de consommation de cet enfant pour ce type d'énergie
+              const childVarName = `Consommation_${energyType}_${sanitizeAssetName(childNode.name)}`;
+              const childVars = await getExistingVariable(childAsset.assetId, childVarName);
+              
+              if (childVars) {
+                console.log(`📊 Trouvé variable de consommation ${energyType} pour l'enfant ${childNode.name}: ${childVars.variableName}`);
+                return {
+                  name: `var${childConsumptionVariables.length + 1}`,
+                  variableId: childVars.variableId,
+                  variableName: childVars.variableName
+                };
+              } else {
+                console.log(`⚠️ Variable de consommation ${energyType} non trouvée pour l'enfant ${childNode.name}`);
+                return null;
+              }
             }
+            return null;
+          });
+          
+          // Attendre que toutes les recherches de variables soient terminées
+          const childVarsResults = await Promise.all(childVariablePromises);
+          
+          // Filtrer les résultats null
+          childConsumptionVariables.push(...childVarsResults.filter(v => v !== null));
+          
+          // Que faire si aucune variable de consommation enfant n'est trouvée?
+          let consoVar;
+          if (childConsumptionVariables.length > 0) {
+            // Créer une formule qui somme toutes les variables (var1 + var2 + var3 + ...)
+            const formula = childConsumptionVariables.map((v, i) => `var${i + 1}`).join(' + ');
+            
+            console.log(`📊 Création de la règle d'agrégation ${energyType} avec la formule: ${formula} (${childConsumptionVariables.length} variables)`);
+            
+            // Créer la variable de consommation agrégée pour ce niveau et ce type d'énergie
+            consoVar = await createOrGetAggregatedVariable(
+              asset.assetId,
+              consoVarName,
+              formula,
+              childConsumptionVariables.map((v, i) => ({
+                name: `var${i + 1}`,
+                variableId: v.variableId,
+                variableName: v.variableName
+              })),
+              'FLOAT32',
+              getUnitForEnergyType(energyType),
+              `Consommation énergétique (${energyType}) agrégée des sous-niveaux (${childConsumptionVariables.length} variables)`,
+              true
+            );
+          } else {
+            console.log(`⚠️ Aucune variable de consommation ${energyType} n'a été trouvée pour les enfants de ${node.name}.`);
+            
+            // Créer une règle vide (0 + 0) pour respecter le sourceType = "Rule"
+            console.log(`📊 Création d'une règle avec valeur constante pour: ${consoVarName}`);
+            
+            // Créer une règle avec constante
+            consoVar = await createRuleWithConstant(
+              asset.assetId,
+              consoVarName,
+              'FLOAT32', 
+              getUnitForEnergyType(energyType),
+              `Consommation énergétique (${energyType}) du niveau ${node.name} (pas d'enfants avec des variables de consommation)`,
+              true
+            );
           }
-          return null;
-        });
-        
-        // Attendre que toutes les recherches de variables soient terminées
-        const childVarsResults = await Promise.all(childVariablePromises);
-        
-        // Filtrer les résultats null
-        childConsumptionVariables.push(...childVarsResults.filter(v => v !== null));
-        
-        // Nom de la variable de consommation à créer
-        const consoVarName = `Consommation_${energyType}_${sanitizeAssetName(node.name)}`;
-        
-        // Que faire si aucune variable de consommation enfant n'est trouvée?
-        let consoVar;
-        if (childConsumptionVariables.length > 0) {
-          // Créer une formule qui somme toutes les variables (var1 + var2 + var3 + ...)
-          const formula = childConsumptionVariables.map((v, i) => `var${i + 1}`).join(' + ');
           
-          console.log(`📊 Création de la règle d'agrégation avec la formule: ${formula} (${childConsumptionVariables.length} variables)`);
-          
-          // Créer la variable de consommation agrégée pour ce niveau
-          consoVar = await createOrGetAggregatedVariable(
-            asset.assetId,
-            consoVarName,
-            formula,
-            childConsumptionVariables.map((v, i) => ({
-              name: `var${i + 1}`,
-              variableId: v.variableId,
-              variableName: v.variableName
-            })),
-            'FLOAT32',
-            getUnitForEnergyType(energyType),
-            `Consommation énergétique agrégée des sous-niveaux (${childConsumptionVariables.length} variables)`,
-            true
-          );
-        } else {
-          console.log(`⚠️ Aucune variable de consommation n'a été trouvée pour les enfants de ${node.name}.`);
-          
-          // Créer une règle vide (0 + 0) pour respecter le sourceType = "Rule"
-          console.log(`📊 Création d'une règle avec valeur constante pour: ${consoVarName}`);
-          
-          // Au lieu de créer un tag simple, on crée quand même une règle
-          const dummyFormula = "0 + 0"; // Formule simple qui retourne toujours 0
-          
-          // Chercher des variables à utiliser si possible (variables de production par exemple)
-          // ou créer une règle avec constante
-          consoVar = await createRuleWithConstant(
-            asset.assetId,
-            consoVarName,
-            'FLOAT32', 
-            getUnitForEnergyType(energyType),
-            `Consommation énergétique du niveau ${node.name} (pas d'enfants avec des variables de consommation)`,
-            true
-          );
-        }
-        
-        // Mettre à jour les métadonnées avec cette nouvelle variable
-        if (consoVar) {
-          node.metadata = {
-            ...node.metadata,
-            variable: {
+          // Mettre à jour les métadonnées avec cette nouvelle variable
+          if (consoVar) {
+            const metadataKey = `variable_${energyType.toLowerCase()}`;
+            if (!node.metadata) {
+              node.metadata = {};
+            }
+            
+            node.metadata[metadataKey] = {
               id: consoVar.variableId,
               name: consoVar.variableName,
+              energyType: energyType,
               aggregations: consoVar.aggregations ? Object.entries(consoVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
                 ...acc,
                 [key]: {
@@ -1400,8 +1493,11 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
                   }
                 }
               }), {}) : undefined
-            }
-          };
+            };
+          }
+          
+          // Petite pause entre les types d'énergie pour ne pas surcharger l'API
+          await new Promise(resolve => setTimeout(resolve, 250));
         }
       } catch (error) {
         console.error(`❌ Erreur création règles d'agrégation pour ${node.name}:`, error instanceof Error ? error.message : error);
@@ -1823,9 +1919,9 @@ async function createRuleVariable(assetId: string, name: string, formula: string
   variableExistenceCache.set(cacheKey, newVariable);
 
   // Créer les agrégations
-    const aggregations = await createAggregations(newVariable.variableId, name);
-    return {
-      ...newVariable,
-      aggregations
-    };
-} 
+  const aggregations = await createAggregations(newVariable.variableId, name);
+  return {
+    ...newVariable,
+    aggregations
+  };
+}
