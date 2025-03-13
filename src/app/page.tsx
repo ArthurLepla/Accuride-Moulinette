@@ -2,100 +2,125 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { setAuthConfig } from '@/lib/auth';
-import type { AuthConfig } from '@/lib/types';
+import Image from 'next/image';
 
-export default function AuthPage() {
+interface UserProfile {
+  id: string;
+  name: string;
+  avatar: string;
+  color: string;
+}
+
+const userProfiles: UserProfile[] = [
+  {
+    id: 'arthur',
+    name: 'Arthur',
+    avatar: '/avatars/arthur.png',
+    color: 'bg-blue-500'
+  },
+  {
+    id: 'antoine',
+    name: 'Antoine',
+    avatar: '/avatars/antoine.png',
+    color: 'bg-green-500'
+  },
+  {
+    id: 'julien',
+    name: 'Julien',
+    avatar: '/avatars/julien.png',
+    color: 'bg-purple-500'
+  },
+  {
+    id: 'maximilien',
+    name: 'Maximilien',
+    avatar: '/avatars/maximilien.png',
+    color: 'bg-red-500'
+  },
+  {
+    id: 'nicolas',
+    name: 'Nicolas',
+    avatar: '/avatars/nicolas.png',
+    color: 'bg-yellow-500'
+  }
+];
+
+export default function LoginPage() {
   const router = useRouter();
-  const [iedIp, setIedIp] = useState('');
-  const [authToken, setAuthToken] = useState('');
-  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validation basique
-    if (!iedIp || !authToken) {
-      setError('Tous les champs sont requis');
-      return;
-    }
-
+  const handleProfileSelect = async (profile: UserProfile) => {
+    setIsLoading(profile.id);
     try {
-      // Stocker les informations dans le localStorage
-      const config: AuthConfig = {
-        iedIp,
-        authToken
-      };
-      setAuthConfig(config);
-
-      // Rediriger vers le dashboard
-      router.push('/dashboard');
-    } catch (error) {
-      setError('Une erreur est survenue lors de l\'authentification');
+      // Stocker uniquement le profil sélectionné
+      localStorage.setItem('selectedProfile', JSON.stringify(profile));
+      // Rediriger vers la page de configuration IED
+      router.push('/configure-ied');
+    } catch (err) {
+      console.error('Erreur:', err);
+      setIsLoading(null);
     }
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900">
-      <div className="w-full max-w-md space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-center text-white mb-2">
-            IIH Asset Explorer
-          </h1>
-          <h2 className="text-xl text-center text-gray-400">
-            Configuration de la connexion
-          </h2>
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      <div className="max-w-4xl w-full space-y-8">
+        {/* Logo et titre */}
+        <div className="text-center space-y-4">
+          <div className="relative w-full h-40 mb-6">
+            <Image
+              src="/logo/Atlas_Core_Layout_Logo_Smart_Energy_ANNUT.png"
+              alt="Smart Energy"
+              fill
+              className="object-contain"
+              priority
+            />
+          </div>
+          <p className="text-xl text-gray-600">Qui utilise l'application ?</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="iedIp" className="block text-sm font-medium text-gray-300">
-                Adresse IP de l'IED
-              </label>
-              <input
-                id="iedIp"
-                name="iedIp"
-                type="text"
-                required
-                value={iedIp}
-                onChange={(e) => setIedIp(e.target.value)}
-                placeholder="192.168.1.12"
-                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+        {/* Sélection de profil */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+          {userProfiles.map((profile) => (
+            <button
+              key={profile.id}
+              onClick={() => handleProfileSelect(profile)}
+              disabled={isLoading !== null}
+              className="group relative aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-100 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-lg"
+            >
+              <div className={`absolute inset-0 ${profile.color} opacity-10 group-hover:opacity-20 transition-opacity`} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                {isLoading === profile.id ? (
+                  <div className="w-16 h-16 rounded-full border-4 border-blue-500 border-t-transparent animate-spin mb-2" />
+                ) : (
+                  <div className="w-20 h-20 rounded-full overflow-hidden mb-3 ring-2 ring-gray-200">
+                    <Image
+                      src={profile.avatar}
+                      alt={`Avatar de ${profile.name}`}
+                      width={80}
+                      height={80}
+                      className="object-cover w-full h-full"
+                    />
+                  </div>
+                )}
+                <span className="text-gray-900 font-medium text-lg">{profile.name}</span>
+              </div>
+            </button>
+          ))}
+        </div>
 
-            <div>
-              <label htmlFor="authToken" className="block text-sm font-medium text-gray-300">
-                Token d'authentification
-              </label>
-              <input
-                id="authToken"
-                name="authToken"
-                type="password"
-                required
-                value={authToken}
-                onChange={(e) => setAuthToken(e.target.value)}
-                placeholder="Votre token d'authentification"
-                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+        {/* Logo DV Group */}
+        <div className="text-center mt-12">
+          <div className="relative w-48 h-12 mx-auto">
+            <Image
+              src="/logo/ok_claim-logo-horizontal (1).png"
+              alt="DV Group"
+              fill
+              className="object-contain"
+              priority
+            />
           </div>
-
-          {error && (
-            <div className="text-red-500 text-sm text-center">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Se connecter
-          </button>
-        </form>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

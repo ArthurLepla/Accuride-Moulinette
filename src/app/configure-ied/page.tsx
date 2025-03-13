@@ -1,0 +1,170 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { ArrowLeft } from 'lucide-react';
+
+interface UserProfile {
+  id: string;
+  name: string;
+  avatar: string;
+  color: string;
+}
+
+export default function ConfigureIEDPage() {
+  const router = useRouter();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [iedIp, setIedIp] = useState('');
+  const [authToken, setAuthToken] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Récupérer le profil sélectionné
+    const savedProfile = localStorage.getItem('selectedProfile');
+    if (!savedProfile) {
+      router.push('/');
+      return;
+    }
+    setProfile(JSON.parse(savedProfile));
+  }, [router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Configuration de l'authentification
+      const authConfig = {
+        baseUrl: `https://${iedIp}/iih-essentials`,
+        token: authToken,
+        iedIp: iedIp,
+        authToken: authToken,
+        userProfile: profile.id
+      };
+
+      localStorage.setItem('authConfig', JSON.stringify(authConfig));
+      router.push('/dashboard');
+    } catch (err) {
+      console.error('Erreur lors de la configuration:', err);
+      setError('Erreur lors de la configuration. Veuillez vérifier vos informations.');
+      setIsLoading(false);
+    }
+  };
+
+  if (!profile) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-8">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="relative w-full h-24">
+            <Image
+              src="/logo/Atlas_Core_Layout_Logo_Smart_Energy_ANNUT.png"
+              alt="Smart Energy"
+              fill
+              className="object-contain"
+              priority
+            />
+          </div>
+        </div>
+
+        {/* En-tête avec profil */}
+        <div className="flex items-center gap-4 mb-8">
+          <button
+            onClick={() => router.push('/')}
+            className="p-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-gray-200">
+              <Image
+                src={profile.avatar}
+                alt={`Avatar de ${profile.name}`}
+                width={48}
+                height={48}
+                className="object-cover"
+              />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Configuration IED</h2>
+              <p className="text-sm text-gray-500">Connecté en tant que {profile.name}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Formulaire */}
+        <form onSubmit={handleSubmit} className="bg-white shadow-lg rounded-lg p-6 space-y-6 border border-gray-200">
+          <div className="space-y-2">
+            <label htmlFor="iedIp" className="block text-sm font-medium text-gray-700">
+              Adresse IP de l'IED
+            </label>
+            <input
+              type="text"
+              id="iedIp"
+              value={iedIp}
+              onChange={(e) => setIedIp(e.target.value)}
+              placeholder="192.168.1.1"
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="authToken" className="block text-sm font-medium text-gray-700">
+              Token d'authentification
+            </label>
+            <input
+              type="password"
+              id="authToken"
+              value={authToken}
+              onChange={(e) => setAuthToken(e.target.value)}
+              placeholder="Votre token d'authentification"
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="text-red-500 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {isLoading ? (
+              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              'Se connecter'
+            )}
+          </button>
+        </form>
+
+        {/* Logo DV Group */}
+        <div className="text-center mt-8">
+          <div className="relative w-48 h-12 mx-auto">
+            <Image
+              src="/logo/ok_claim-logo-horizontal (1).png"
+              alt="DV Group"
+              fill
+              className="object-contain"
+              priority
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+} 

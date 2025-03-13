@@ -21,7 +21,7 @@ type Step = {
 
 // Fonction pour nettoyer les noms
 const cleanName = (name: string): string => {
-  return name.trim().replace(/[^a-zA-Z0-9\u00C0-\u017F\s-]/g, '');
+  return name.trim().replace(/[^a-zA-Z0-9\u00C0-\u017F\s_-]/g, '').replace(/\s+/g, '_');
 };
 
 const TableView = ({ data, columns }: { data: any[]; columns: { key: string; label: string }[] }) => (

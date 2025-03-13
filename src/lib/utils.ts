@@ -30,4 +30,23 @@ export function formatNumber(value: number): string {
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + '...';
+}
+
+// Palette de couleurs pour les différents niveaux
+const levelColors = [
+  '#1f77b4', // bleu
+  '#ff7f0e', // orange
+  '#2ca02c', // vert
+  '#d62728', // rouge
+  '#9467bd', // violet
+  '#8c564b', // marron
+  '#e377c2', // rose
+  '#7f7f7f', // gris
+  '#bcbd22', // olive
+  '#17becf'  // cyan
+];
+
+export function getColorByLevel(level: number): string {
+  // Utilise le modulo pour cycler à travers les couleurs si on a plus de niveaux que de couleurs
+  return levelColors[level % levelColors.length];
 } 

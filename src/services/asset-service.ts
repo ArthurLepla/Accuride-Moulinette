@@ -1,6 +1,16 @@
 import axios from 'axios';
 import { IIHAssetResponse, AssetNode, IIHVariable } from '../types/assets';
 
+interface IIHAssetBase {
+  assetId: string;
+  name: string;
+  parentId: string;
+  hasChildren: boolean;
+  sortOrder: number;
+  variables?: IIHVariable[];
+  children?: IIHAssetBase[];  // Ajout du champ children optionnel
+}
+
 export const getAssets = async (): Promise<IIHAssetResponse> => {
   try {
     const response = await fetch('/api/assets');
@@ -14,8 +24,8 @@ export const getAssets = async (): Promise<IIHAssetResponse> => {
     // Récupérer les détails des assets qui ont des enfants
     const assetsWithDetails = await Promise.all(
       data.assets
-        .filter(asset => asset.hasChildren)
-        .map(async asset => {
+        .filter((asset: IIHAssetBase) => asset.hasChildren)
+        .map(async (asset: IIHAssetBase) => {
           try {
             const details = await getAssetDetails(asset.assetId);
             return {
@@ -31,7 +41,7 @@ export const getAssets = async (): Promise<IIHAssetResponse> => {
     );
 
     // Mettre à jour les assets avec leurs enfants et variables
-    const updatedAssets = data.assets.map(asset => {
+    const updatedAssets = data.assets.map((asset: IIHAssetBase) => {
       const assetWithDetails = assetsWithDetails.find(a => a.assetId === asset.assetId);
       return assetWithDetails || asset;
     });
@@ -69,7 +79,7 @@ export const buildAssetTree = (assets: IIHAssetResponse): AssetNode[] => {
   const rootNodes: AssetNode[] = [];
 
   // Première passe : créer tous les nœuds
-  assets.assets.forEach(asset => {
+  assets.assets.forEach((asset: IIHAssetBase) => {
     const node: AssetNode = {
       id: asset.assetId,
       name: asset.name,
@@ -83,10 +93,10 @@ export const buildAssetTree = (assets: IIHAssetResponse): AssetNode[] => {
 
     // Ajouter les enfants s'ils existent
     if (asset.children && Array.isArray(asset.children)) {
-      asset.children.forEach(child => {
+      asset.children.forEach((child: IIHAssetBase) => {
         if (child && typeof child === 'object') {
           const childNode: AssetNode = {
-            id: child.assetId || child.id,
+            id: child.assetId,
             name: child.name,
             parentId: asset.assetId,
             hasChildren: child.hasChildren || false,

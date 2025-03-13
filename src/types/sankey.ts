@@ -38,4 +38,47 @@ export interface ProcessedData {
     totalAteliers: number;
     totalMachines: number;
   };
+}
+
+export interface HierarchyNode {
+  id: string;
+  name: string;
+  level: number;
+  levelName: string;
+  metadata?: {
+    energyType?: string;
+    [key: string]: any;
+  };
+  itemStyle?: {
+    color: string;
+  };
+}
+
+export interface HierarchyLink {
+  source: string;
+  target: string;
+  value: number;
+  lineStyle?: {
+    color: string;
+    opacity: number;
+  };
+}
+
+export interface HierarchyData {
+  nodes: HierarchyNode[];
+  links: HierarchyLink[];
+  levels: {
+    level: number;
+    name: string;
+  }[];
+}
+
+export interface FlexibleProcessedData {
+  hierarchyData: HierarchyData;
+  treeData: any;
+  treemapData: TreemapData[];
+  summary: {
+    totalRows: number;
+    levelCounts: { [levelName: string]: number };
+  };
 } 
