@@ -9,13 +9,26 @@ import {
   Settings, 
   LogOut,
   Menu,
-  X
+  X,
+  Upload,
+  ChevronLeft,
+  ChevronRight,
+  BarChart,
+  Code,
+  Wrench
 } from 'lucide-react';
 import { useProfile } from '@/contexts/ProfileContext';
+import { ReactNode } from 'react';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
+}
+
+interface NavItem {
+  title: string;
+  href: string;
+  icon: ReactNode;
 }
 
 export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
@@ -23,31 +36,32 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProp
   const pathname = usePathname();
   const { profile, profileColor, logout } = useProfile();
 
-  const menuItems = [
+  const mainNavItems: NavItem[] = [
     {
-      title: 'Tableau de bord',
-      icon: <LayoutDashboard className="w-5 h-5" />,
+      title: 'Dashboard',
       href: '/dashboard',
-      current: pathname === '/dashboard'
+      icon: <LayoutDashboard className="w-5 h-5" />,
     },
     {
-      title: 'Import Hiérarchique',
-      icon: <FileInput className="w-5 h-5" />,
+      title: 'Import Flexible',
       href: '/flexible-import',
-      current: pathname === '/flexible-import'
-    },
-    {
-      title: 'Générateur Mendix',
-      icon: <Code2 className="w-5 h-5" />,
-      href: '/mendix-generator',
-      current: pathname === '/mendix-generator'
+      icon: <Upload className="w-5 h-5" />,
     },
     {
       title: 'Visualisation',
-      icon: <GitBranch className="w-5 h-5" />,
       href: '/charts',
-      current: pathname === '/charts'
-    }
+      icon: <BarChart className="w-5 h-5" />,
+    },
+    {
+      title: 'Sandbox API',
+      href: '/sandbox',
+      icon: <Wrench className="w-5 h-5" />,
+    },
+    {
+      title: 'Paramètres',
+      href: '/settings',
+      icon: <Settings className="w-5 h-5" />,
+    },
   ];
 
   // Fonction pour obtenir les couleurs du thème en fonction du profil
@@ -106,12 +120,12 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProp
 
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-            {menuItems.map((item, index) => (
+            {mainNavItems.map((item, index) => (
               <Link
                 key={index}
                 href={item.href}
                 className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors relative ${
-                  item.current 
+                  pathname === item.href 
                     ? `bg-gradient-to-r ${getThemeColors()} text-white` 
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                 }`}
@@ -125,15 +139,8 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProp
           {/* Footer */}
           <div className="p-4 border-t border-gray-800">
             <button
-              onClick={() => router.push('/settings')}
-              className="flex items-center px-4 py-2.5 text-sm text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white w-full"
-            >
-              <Settings className="w-5 h-5" />
-              <span className="ml-3">Paramètres</span>
-            </button>
-            <button
               onClick={logout}
-              className="flex items-center px-4 py-2.5 text-sm text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white w-full mt-2"
+              className="flex items-center px-4 py-2.5 text-sm text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white w-full"
             >
               <LogOut className="w-5 h-5" />
               <span className="ml-3">Déconnexion</span>

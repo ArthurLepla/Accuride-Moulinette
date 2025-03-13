@@ -1,51 +1,64 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import https from 'https';
 import nodeFetch from 'node-fetch';
-import { getAuthConfigFromHeaders } from '@/lib/auth';
 
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
-export async function GET(request: Request) {
+export async function GET() {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
   try {
-    const authConfig = getAuthConfigFromHeaders(request.headers);
+    const headersList = await headers();
+    const authConfig = headersList.get('x-auth-config');
+    
     if (!authConfig) {
-      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-    }
-
-    const response = await nodeFetch(
-      `https://${authConfig.iedIp}/iih-essentials/AssetService/Assets/Root`,
-      {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authConfig.authToken}`,
-          'Host': authConfig.iedIp
-        },
-        agent: httpsAgent
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erreur récupération asset racine:', {
-        status: response.status,
-        body: errorText
-      });
       return NextResponse.json(
-        { error: `Erreur API: ${response.status} - ${errorText}` },
-        { status: response.status }
+        { error: 'Configuration d\'authentification manquante' },
+        { status: 401 }
       );
     }
 
+    const config = JSON.parse(authConfig);
+    
+    const url = `https://${config.iedIp}/iih-essentials/AssetService/Assets/Root`;
+    console.log('Tentative de connexion à:', url);
+
+    const response = await nodeFetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.authToken}`,
+        'Host': config.iedIp
+      },
+      agent: httpsAgent
+    });
+
+    console.log('Statut de la réponse:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Erreur de réponse:', {
+        status: response.status,
+        statusText: response.statusText,
+        url: url,
+        headers: Object.fromEntries(response.headers),
+        errorText: errorText
+      });
+      throw new Error(`Erreur lors de la récupération de l'asset racine (${response.status}): ${errorText}`);
+    }
+
     const data = await response.json();
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
     return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Erreur proxy API:', error);
+  } catch (error) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+    console.error('Erreur lors de la récupération de l\'asset racine:', error);
     return NextResponse.json(
-      { error: error.message || 'Erreur interne du serveur' },
+      { error: error instanceof Error ? error.message : 'Une erreur est survenue' },
       { status: 500 }
     );
   }

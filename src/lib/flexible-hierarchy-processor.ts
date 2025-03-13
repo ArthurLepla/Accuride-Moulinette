@@ -49,7 +49,7 @@ export function processFlexibleHierarchy(
 
   // Fonction pour nettoyer les noms
   const cleanName = (name: string): string => {
-    return name.trim().replace(/[^a-zA-Z0-9\u00C0-\u017F\s-]/g, '');
+    return name.trim().replace(/[^a-zA-Z0-9\u00C0-\u017F\s_-]/g, '');
   };
 
   // Fonction pour générer un ID unique

@@ -40,7 +40,7 @@ export default function ConfigureIEDPage() {
     try {
       // Configuration de l'authentification
       const authConfig = {
-        baseUrl: `https://${iedIp}`,
+        baseUrl: `https://${iedIp}/iih-essentials`,
         token: authToken,
         iedIp: iedIp,
         authToken: authToken,

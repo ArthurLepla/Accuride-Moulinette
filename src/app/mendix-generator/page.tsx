@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Copy, Check, ArrowLeft, X } from 'lucide-react';
 import { generateRequiredEntities, generateMendixValidationCode } from './utils/mendixValidator';
-import { generateDynamicMendixCode, generateDynamicCleanupCode } from './utils/codeGenerator';
+import { generateDynamicMendixCode, generateDynamicCleanupCode, MendixEntitySummary } from './utils/codeGenerator';
 import AppLayout from '@/components/layout/AppLayout';
 
 interface IIHAsset {
@@ -25,97 +25,12 @@ interface IIHAsset {
   }>;
 }
 
-interface MendixEntitySummary {
-  totalEntities: {
-    Secteur: number;
-    Atelier: number;
-    Machine: number;
-    SmartAggregation_Conso: number;
-    SmartAggregation_Production: number;
-    SmartAggregation_IPE: number;
-    EtatCapteur: number;
+interface EntityEntry {
+  entity: string;
+  attributes: {
+    [key: string]: string;
   };
-  secteurs: Array<{
-    entity: 'Smart.Secteur';
-    attributes: {
-      Nom: string;
-      TotalConso: string;
-    };
-  }>;
-  ateliers: Array<{
-    entity: 'Smart.Atelier';
-    attributes: {
-      Nom: string;
-      TotalConso: string;
-      Secteur: string;
-    };
-  }>;
-  machines: Array<{
-    entity: 'Smart.Machine';
-    attributes: {
-      Identifiant: string;
-      Nom: string;
-      IPE: string;
-      TotalConso: string;
-      Secteur: string;
-      Atelier: string;
-      TypeEnergie: string;
-    };
-    parentSector?: string;
-    parentWorkshop?: string;
-  }>;
-  aggregations_conso: Array<{
-    entity: 'Smart.Aggregation_Conso';
-    attributes: {
-      VariableId: string;
-      VariableName: string;
-      AssetName: string;
-      Identifiant5Min?: string;
-      Identifiant1h?: string;
-      Identifiant4h?: string;
-      Identifiant8h?: string;
-      Identifiant1day?: string;
-    };
-    parentMachine: string;
-  }>;
-  aggregations_production: Array<{
-    entity: 'Smart.Aggregation_Production';
-    attributes: {
-      VariableId: string;
-      VariableName: string;
-      AssetName: string;
-      Identifiant5Min?: string;
-      Identifiant1h?: string;
-      Identifiant4h?: string;
-      Identifiant8h?: string;
-      Identifiant1day?: string;
-    };
-    parentMachine: string;
-  }>;
-  aggregations_ipe: Array<{
-    entity: 'Smart.Aggregation_IPE';
-    attributes: {
-      VariableId: string;
-      VariableName: string;
-      AssetName: string;
-      Identifiant5Min?: string;
-      Identifiant1h?: string;
-      Identifiant4h?: string;
-      Identifiant8h?: string;
-      Identifiant1day?: string;
-    };
-    parentMachine: string;
-  }>;
-  etatCapteurs: Array<{
-    entity: 'Smart.EtatCapteur';
-    attributes: {
-      NomCapteur: string;
-      Etat: string;
-      DerniereMaj: string;
-      IdEtatCapteur?: string;
-    };
-    parentMachine: string;
-  }>;
+  [key: string]: any;
 }
 
 interface RequiredEntityDisplay {
@@ -144,257 +59,177 @@ export default function MendixGeneratorPage() {
     console.log('Structure IIH reçue:', JSON.stringify(iihData, null, 2));
     
     const summary: MendixEntitySummary = {
-      totalEntities: {
-        Secteur: 0,
-        Atelier: 0,
-        Machine: 0,
-        SmartAggregation_Conso: 0,
-        SmartAggregation_Production: 0,
-        SmartAggregation_IPE: 0,
-        EtatCapteur: 0
-      },
-      secteurs: [],
-      ateliers: [],
-      machines: [],
-      aggregations_conso: [],
-      aggregations_production: [],
-      aggregations_ipe: [],
-      etatCapteurs: []
+      totalEntities: {},
     };
 
-    // Traiter les machines à la racine
-    if (iihData.rootMachines) {
-      Object.entries(iihData.rootMachines).forEach(([name, machine]: [string, any]) => {
-        summary.totalEntities.Machine++;
-        
-        summary.machines.push({
-          entity: 'Smart.Machine',
-          attributes: {
-            Identifiant: machine.assetId,
-            Nom: machine.name || name,
-            IPE: '0',
-            TotalConso: '0',
-            Secteur: '',
-            Atelier: '',
-            TypeEnergie: machine.energyType || ''
-          },
-          parentSector: ''
-        });
+    // Initialiser les compteurs et tableaux pour chaque niveau
+    iihData.hierarchyData.levels.forEach((level: any) => {
+      summary.totalEntities[level.name] = 0;
+      summary[level.name.toLowerCase() + 's'] = [];
+    });
 
-        if (machine.variable) {
-          summary.totalEntities.SmartAggregation_Conso++;
-          const aggregationIds: string[] = [];
-          
-          summary.aggregations_conso.push({
-            entity: 'Smart.Aggregation_Conso',
-            attributes: {
-              VariableId: machine.variable.id,
-              VariableName: machine.variable.name,
-              AssetName: machine.name || name,
-              ...(machine.variable.aggregations?.['5min'] && { Identifiant5Min: machine.variable.aggregations['5min'].id }),
-              ...(machine.variable.aggregations?.['1h'] && { Identifiant1h: machine.variable.aggregations['1h'].id }),
-              ...(machine.variable.aggregations?.['4h'] && { Identifiant4h: machine.variable.aggregations['4h'].id }),
-              ...(machine.variable.aggregations?.['8h'] && { Identifiant8h: machine.variable.aggregations['8h'].id }),
-              ...(machine.variable.aggregations?.['1d'] && { Identifiant1day: machine.variable.aggregations['1d'].id })
-            },
-            parentMachine: machine.name || name
-          });
-        }
+    // Initialiser les compteurs et tableaux pour les entités spéciales
+    const specialEntities = ['SmartAggregation_Conso', 'SmartAggregation_Production', 'SmartAggregation_IPE', 'EtatCapteur'];
+    specialEntities.forEach(entity => {
+      summary.totalEntities[entity] = 0;
+      // Convertir les noms des entités spéciales en noms de propriétés
+      let propertyName = entity.toLowerCase();
+      if (propertyName.startsWith('smartaggregation_')) {
+        propertyName = 'aggregations_' + propertyName.replace('smartaggregation_', '');
+      } else if (propertyName === 'etatcapteur') {
+        propertyName = 'etatCapteurs';
+      }
+      summary[propertyName] = [];
+    });
 
-        if (machine.stateVariable?.variableId) {
-          summary.totalEntities.EtatCapteur++;
-          summary.etatCapteurs.push({
-            entity: 'Smart.EtatCapteur',
-            attributes: {
-              NomCapteur: machine.name || name,
-              Etat: "false",
-              DerniereMaj: new Date().toISOString(),
-              IdEtatCapteur: machine.stateVariable.variableId
-            },
-            parentMachine: machine.name || name
-          });
-        }
+    // Fonction helper pour créer une entrée d'entité
+    const createEntityEntry = (entityName: string, name: string, attributes: any): EntityEntry => ({
+      entity: `Smart.${entityName}`,
+      attributes: {
+        Nom: name,
+        TotalConso: '0',
+        ...attributes
+      }
+    });
+
+    // Traiter la hiérarchie
+    const processNode = (node: any, parentNodes: any[] = []) => {
+      const level = node.metadata.level;
+      summary.totalEntities[level]++;
+
+      // Créer les attributs de base
+      const attributes: any = {
+        Nom: node.name,
+        TotalConso: '0'
+      };
+
+      // Ajouter les références aux parents
+      parentNodes.forEach(parent => {
+        attributes[parent.metadata.level] = parent.name;
       });
-    }
 
-    // Traiter les secteurs et leur hiérarchie
-    if (iihData.sectors) {
-      Object.entries(iihData.sectors).forEach(([sectorName, sector]: [string, any]) => {
-        summary.totalEntities.Secteur++;
-        const sectorMachines: string[] = [];
-        const sectorAteliers: string[] = [];
+      // Ajouter des attributs spécifiques si c'est une machine
+      if (level === 'Machine') {
+        attributes.Identifiant = node.metadata.assetId || node.id;
+        attributes.IPE = '0';
+        attributes.TypeEnergie = node.metadata.energyType || node.metadata.rawEnergyType || '';
+      }
 
-        const secteur: { entity: 'Smart.Secteur', attributes: { Nom: string, TotalConso: string } } = {
-          entity: 'Smart.Secteur',
-          attributes: {
-            Nom: sector.name || sectorName,
-            TotalConso: '0'
-          }
-        };
-        summary.secteurs.push(secteur);
+      // Ajouter l'entrée au niveau correspondant
+      const entityEntry = createEntityEntry(level, node.name, attributes);
+      summary[level.toLowerCase() + 's'].push(entityEntry);
 
-        // Traiter les machines directement rattachées au secteur (sans atelier)
-        if (sector.machines) {
-          Object.entries(sector.machines).forEach(([machineName, machine]: [string, any]) => {
-            summary.totalEntities.Machine++;
-            sectorMachines.push(machine.name || machineName);
+      // Traiter les variables si c'est une machine
+      if (level === 'Machine') {
+        processVariables(node, summary);
+      }
+    };
 
-            summary.machines.push({
-              entity: 'Smart.Machine',
-              attributes: {
-                Identifiant: machine.assetId,
-                Nom: machine.name || machineName,
-                IPE: '0',
-                TotalConso: '0',
-                Secteur: sector.name || sectorName,
-                Atelier: '',
-                TypeEnergie: machine.energyType || ''
-              },
-              parentSector: sector.name || sectorName
-            });
-
-            if (machine.variable) {
-              summary.totalEntities.SmartAggregation_Conso++;
-              summary.aggregations_conso.push({
-                entity: 'Smart.Aggregation_Conso',
-                attributes: {
-                  VariableId: machine.variable.id,
-                  VariableName: machine.variable.name,
-                  AssetName: machine.name || machineName,
-                  ...(machine.variable.aggregations?.['5min'] && { Identifiant5Min: machine.variable.aggregations['5min'].id }),
-                  ...(machine.variable.aggregations?.['1h'] && { Identifiant1h: machine.variable.aggregations['1h'].id }),
-                  ...(machine.variable.aggregations?.['4h'] && { Identifiant4h: machine.variable.aggregations['4h'].id }),
-                  ...(machine.variable.aggregations?.['8h'] && { Identifiant8h: machine.variable.aggregations['8h'].id }),
-                  ...(machine.variable.aggregations?.['1d'] && { Identifiant1day: machine.variable.aggregations['1d'].id })
-                },
-                parentMachine: machine.name || machineName
-              });
-            }
-
-            if (machine.stateVariable?.variableId) {
-              summary.totalEntities.EtatCapteur++;
-              summary.etatCapteurs.push({
-                entity: 'Smart.EtatCapteur',
-                attributes: {
-                  NomCapteur: machine.name || machineName,
-                  Etat: "false",
-                  DerniereMaj: new Date().toISOString(),
-                  IdEtatCapteur: machine.stateVariable.variableId
-                },
-                parentMachine: machine.name || machineName
-              });
-            }
-          });
-        }
-
-        // Traiter les ateliers et leurs machines
-        Object.entries(sector.workshops || {}).forEach(([workshopName, workshop]: [string, any]) => {
-          summary.totalEntities.Atelier++;
-          const workshopMachines: string[] = [];
-
-          const atelier: { entity: 'Smart.Atelier', attributes: { Nom: string, TotalConso: string, Secteur: string } } = {
-            entity: 'Smart.Atelier',
-            attributes: {
-              Nom: workshop.name || workshopName,
-              TotalConso: '0',
-              Secteur: sector.name || sectorName
-            }
-          };
-          summary.ateliers.push(atelier);
-
-          Object.entries(workshop.machines || {}).forEach(([machineName, machine]: [string, any]) => {
-            summary.totalEntities.Machine++;
-            workshopMachines.push(machine.name || machineName);
-            sectorMachines.push(machine.name || machineName);
-
-            summary.machines.push({
-              entity: 'Smart.Machine',
-              attributes: {
-                Identifiant: machine.assetId,
-                Nom: machine.name || machineName,
-                IPE: '0',
-                TotalConso: '0',
-                Secteur: sector.name || sectorName,
-                Atelier: workshop.name || workshopName,
-                TypeEnergie: machine.energyType || ''
-              },
-              parentSector: sector.name || sectorName,
-              parentWorkshop: workshop.name || workshopName
-            });
-
-            if (machine.variable) {
-              summary.totalEntities.SmartAggregation_Conso++;
-              summary.aggregations_conso.push({
-                entity: 'Smart.Aggregation_Conso',
-                attributes: {
-                  VariableId: machine.variable.id,
-                  VariableName: machine.variable.name,
-                  AssetName: machine.name || machineName,
-                  ...(machine.variable.aggregations?.['5min'] && { Identifiant5Min: machine.variable.aggregations['5min'].id }),
-                  ...(machine.variable.aggregations?.['1h'] && { Identifiant1h: machine.variable.aggregations['1h'].id }),
-                  ...(machine.variable.aggregations?.['4h'] && { Identifiant4h: machine.variable.aggregations['4h'].id }),
-                  ...(machine.variable.aggregations?.['8h'] && { Identifiant8h: machine.variable.aggregations['8h'].id }),
-                  ...(machine.variable.aggregations?.['1d'] && { Identifiant1day: machine.variable.aggregations['1d'].id })
-                },
-                parentMachine: machine.name || machineName
-              });
-            }
-
-            if (machine.productionVariable) {
-              summary.totalEntities.SmartAggregation_Production++;
-              summary.aggregations_production.push({
-                entity: 'Smart.Aggregation_Production',
-                attributes: {
-                  VariableId: machine.productionVariable.id,
-                  VariableName: machine.productionVariable.name,
-                  AssetName: machine.name || machineName,
-                  ...(machine.productionVariable.aggregations?.['5min'] && { Identifiant5Min: machine.productionVariable.aggregations['5min'].id }),
-                  ...(machine.productionVariable.aggregations?.['1h'] && { Identifiant1h: machine.productionVariable.aggregations['1h'].id }),
-                  ...(machine.productionVariable.aggregations?.['4h'] && { Identifiant4h: machine.productionVariable.aggregations['4h'].id }),
-                  ...(machine.productionVariable.aggregations?.['8h'] && { Identifiant8h: machine.productionVariable.aggregations['8h'].id }),
-                  ...(machine.productionVariable.aggregations?.['1d'] && { Identifiant1day: machine.productionVariable.aggregations['1d'].id })
-                },
-                parentMachine: machine.name || machineName
-              });
-            }
-
-            if (machine.ipeVariable) {
-              summary.totalEntities.SmartAggregation_IPE++;
-              summary.aggregations_ipe.push({
-                entity: 'Smart.Aggregation_IPE',
-                attributes: {
-                  VariableId: machine.ipeVariable.id,
-                  VariableName: machine.ipeVariable.name,
-                  AssetName: machine.name || machineName,
-                  ...(machine.ipeVariable.aggregations?.['5min'] && { Identifiant5Min: machine.ipeVariable.aggregations['5min'].id }),
-                  ...(machine.ipeVariable.aggregations?.['1h'] && { Identifiant1h: machine.ipeVariable.aggregations['1h'].id }),
-                  ...(machine.ipeVariable.aggregations?.['4h'] && { Identifiant4h: machine.ipeVariable.aggregations['4h'].id }),
-                  ...(machine.ipeVariable.aggregations?.['8h'] && { Identifiant8h: machine.ipeVariable.aggregations['8h'].id }),
-                  ...(machine.ipeVariable.aggregations?.['1d'] && { Identifiant1day: machine.ipeVariable.aggregations['1d'].id })
-                },
-                parentMachine: machine.name || machineName
-              });
-            }
-
-            if (machine.stateVariable?.variableId) {
-              summary.totalEntities.EtatCapteur++;
-              summary.etatCapteurs.push({
-                entity: 'Smart.EtatCapteur',
-                attributes: {
-                  NomCapteur: machine.name || machineName,
-                  Etat: "false",
-                  DerniereMaj: new Date().toISOString(),
-                  IdEtatCapteur: machine.stateVariable.variableId
-                },
-                parentMachine: machine.name || machineName
-              });
-            }
-          });
-        });
+    // Parcourir la hiérarchie et traiter chaque nœud
+    const processHierarchy = (nodes: any[], links: any[]) => {
+      nodes.forEach(node => {
+        const parents = findAllParents(node.id, nodes, links);
+        processNode(node, parents);
       });
+    };
+
+    // Traiter la hiérarchie complète
+    if (iihData.hierarchyData?.nodes && iihData.hierarchyData?.links) {
+      processHierarchy(iihData.hierarchyData.nodes, iihData.hierarchyData.links);
     }
 
     return summary;
+  };
+
+  const findAllParents = (nodeId: string, nodes: any[], links: any[]) => {
+    const parents = [];
+    let currentId = nodeId;
+
+    while (true) {
+      const parentLink = links.find(link => link.target === currentId);
+      if (!parentLink) break;
+
+      const parentNode = nodes.find(node => node.id === parentLink.source);
+      if (!parentNode) break;
+
+      parents.push(parentNode);
+      currentId = parentNode.id;
+    }
+
+    return parents;
+  };
+
+  const processVariables = (node: any, summary: MendixEntitySummary) => {
+    // Traiter la variable de consommation
+    if (node.metadata.variable) {
+      summary.totalEntities.SmartAggregation_Conso++;
+      summary.aggregations_conso.push({
+        entity: 'Smart.Aggregation_Conso',
+        attributes: {
+          VariableId: node.metadata.variable.id,
+          VariableName: node.metadata.variable.name,
+          AssetName: node.name,
+          Machine: node.name,
+          ...(node.metadata.variable.aggregations?.['5min'] && { Identifiant5Min: node.metadata.variable.aggregations['5min'].id }),
+          ...(node.metadata.variable.aggregations?.['1h'] && { Identifiant1h: node.metadata.variable.aggregations['1h'].id }),
+          ...(node.metadata.variable.aggregations?.['4h'] && { Identifiant4h: node.metadata.variable.aggregations['4h'].id }),
+          ...(node.metadata.variable.aggregations?.['8h'] && { Identifiant8h: node.metadata.variable.aggregations['8h'].id }),
+          ...(node.metadata.variable.aggregations?.['1d'] && { Identifiant1day: node.metadata.variable.aggregations['1d'].id })
+        }
+      });
+    }
+
+    // Traiter la variable de production
+    if (node.metadata.productionVariable) {
+      summary.totalEntities.SmartAggregation_Production++;
+      summary.aggregations_production.push({
+        entity: 'Smart.Aggregation_Production',
+        attributes: {
+          VariableId: node.metadata.productionVariable.id,
+          VariableName: node.metadata.productionVariable.name,
+          AssetName: node.name,
+          Machine: node.name,
+          ...(node.metadata.productionVariable.aggregations?.['5min'] && { Identifiant5Min: node.metadata.productionVariable.aggregations['5min'].id }),
+          ...(node.metadata.productionVariable.aggregations?.['1h'] && { Identifiant1h: node.metadata.productionVariable.aggregations['1h'].id }),
+          ...(node.metadata.productionVariable.aggregations?.['4h'] && { Identifiant4h: node.metadata.productionVariable.aggregations['4h'].id }),
+          ...(node.metadata.productionVariable.aggregations?.['8h'] && { Identifiant8h: node.metadata.productionVariable.aggregations['8h'].id }),
+          ...(node.metadata.productionVariable.aggregations?.['1d'] && { Identifiant1day: node.metadata.productionVariable.aggregations['1d'].id })
+        }
+      });
+    }
+
+    // Traiter la variable IPE
+    if (node.metadata.ipeVariable) {
+      summary.totalEntities.SmartAggregation_IPE++;
+      summary.aggregations_ipe.push({
+        entity: 'Smart.Aggregation_IPE',
+        attributes: {
+          VariableId: node.metadata.ipeVariable.id,
+          VariableName: node.metadata.ipeVariable.name,
+          AssetName: node.name,
+          Machine: node.name,
+          ...(node.metadata.ipeVariable.aggregations?.['5min'] && { Identifiant5Min: node.metadata.ipeVariable.aggregations['5min'].id }),
+          ...(node.metadata.ipeVariable.aggregations?.['1h'] && { Identifiant1h: node.metadata.ipeVariable.aggregations['1h'].id }),
+          ...(node.metadata.ipeVariable.aggregations?.['4h'] && { Identifiant4h: node.metadata.ipeVariable.aggregations['4h'].id }),
+          ...(node.metadata.ipeVariable.aggregations?.['8h'] && { Identifiant8h: node.metadata.ipeVariable.aggregations['8h'].id }),
+          ...(node.metadata.ipeVariable.aggregations?.['1d'] && { Identifiant1day: node.metadata.ipeVariable.aggregations['1d'].id })
+        }
+      });
+    }
+
+    // Traiter l'état du capteur
+    if (node.metadata.stateVariable?.variableId) {
+      summary.totalEntities.EtatCapteur++;
+      summary.etatCapteurs.push({
+        entity: 'Smart.EtatCapteur',
+        attributes: {
+          NomCapteur: node.name,
+          Etat: "false",
+          DerniereMaj: new Date().toISOString(),
+          IdEtatCapteur: node.metadata.stateVariable.variableId
+        }
+      });
+    }
   };
 
   useEffect(() => {
@@ -444,7 +279,7 @@ export default function MendixGeneratorPage() {
       setMendixSummary(mendixSummary);
       const generatedCode = generateDynamicMendixCode(hierarchyLevels, requiredEntities, data, mendixSummary);
       setGeneratedCode(generatedCode);
-      const cleanup = generateDynamicCleanupCode(requiredEntities);
+      const cleanup = generateDynamicCleanupCode(requiredEntities, hierarchyLevels);
       setCleanupCode(cleanup);
       setShowEntitiesModal(false);
     } catch (error) {
