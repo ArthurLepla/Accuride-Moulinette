@@ -1041,11 +1041,8 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
       let ipeVar: any = null;
       let ipeKgVar: any = null;
       let stateVar: any = null;
-      // Variables de consommation par type d'énergie
-      let consoElecVar: any = null;
-      let consoGazVar: any = null;
-      let consoEauVar: any = null;
-      let consoAirVar: any = null;
+      // Variables de consommation
+      let consoVar: any = null;
 
       // Ajouter des attributs pour tous les niveaux sauf le premier
       if (!isFirstLevel) {
@@ -1064,57 +1061,16 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
           // Créer les variables - Utiliser des promises indépendantes pour chaque variable
           // mais les traiter une par une pour éviter les problèmes de verrou de base de données
           
-          // Variables de consommation - seulement pour le dernier niveau
+          // Variable de consommation - seulement pour le dernier niveau
           if (isLastLevel) {
-            // Au lieu d'une seule variable de consommation, créer une variable pour chaque type d'énergie
-            // mais marquer celle qui correspond au type détecté comme la principale
-            
-            const consoElecVarName = `Consommation_Elec_${sanitizeAssetName(node.name)}`;
-            consoElecVar = await createOrGetVariable(
+            // Revenir à l'ancienne version avec une seule variable de consommation basée sur le type d'énergie détecté
+            const consoVarName = `Consommation_${energyType}_${sanitizeAssetName(node.name)}`;
+            consoVar = await createOrGetVariable(
               asset.assetId,
-              consoElecVarName,
+              consoVarName,
               'FLOAT32',
-              getUnitForEnergyType('Elec'),
-              'Consommation électrique',
-              true
-            );
-            
-            // Pause pour réduire la contention
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            const consoGazVarName = `Consommation_Gaz_${sanitizeAssetName(node.name)}`;
-            consoGazVar = await createOrGetVariable(
-              asset.assetId,
-              consoGazVarName,
-              'FLOAT32',
-              getUnitForEnergyType('Gaz'),
-              'Consommation de gaz',
-              true
-            );
-            
-            // Pause pour réduire la contention
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            const consoEauVarName = `Consommation_Eau_${sanitizeAssetName(node.name)}`;
-            consoEauVar = await createOrGetVariable(
-              asset.assetId,
-              consoEauVarName,
-              'FLOAT32',
-              getUnitForEnergyType('Eau'),
-              'Consommation d\'eau',
-              true
-            );
-            
-            // Pause pour réduire la contention
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            const consoAirVarName = `Consommation_Air_${sanitizeAssetName(node.name)}`;
-            consoAirVar = await createOrGetVariable(
-              asset.assetId,
-              consoAirVarName,
-              'FLOAT32',
-              getUnitForEnergyType('Air'),
-              'Consommation d\'air comprimé',
+              getUnitForEnergyType(energyType),
+              `Consommation énergétique (${energyType})`,
               true
             );
             
@@ -1208,59 +1164,11 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
             type: isLastLevel ? 'machine' : 'group',
             levelPosition, // Stocker la position du niveau
             totalLevels,   // Stocker le nombre total de niveaux
-            variable_elec: consoElecVar ? {
-              id: consoElecVar.variableId,
-              name: consoElecVar.variableName,
-              energyType: 'Elec',
-              aggregations: consoElecVar.aggregations ? Object.entries(consoElecVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
-                ...acc,
-                [key]: {
-                  id: agg.id,
-                  type: agg.type,
-                  cycle: {
-                    base: agg.cycle.base,
-                    factor: agg.cycle.factor
-                  }
-                }
-              }), {}) : undefined
-            } : undefined,
-            variable_gaz: consoGazVar ? {
-              id: consoGazVar.variableId,
-              name: consoGazVar.variableName,
-              energyType: 'Gaz',
-              aggregations: consoGazVar.aggregations ? Object.entries(consoGazVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
-                ...acc,
-                [key]: {
-                  id: agg.id,
-                  type: agg.type,
-                  cycle: {
-                    base: agg.cycle.base,
-                    factor: agg.cycle.factor
-                  }
-                }
-              }), {}) : undefined
-            } : undefined,
-            variable_eau: consoEauVar ? {
-              id: consoEauVar.variableId,
-              name: consoEauVar.variableName,
-              energyType: 'Eau',
-              aggregations: consoEauVar.aggregations ? Object.entries(consoEauVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
-                ...acc,
-                [key]: {
-                  id: agg.id,
-                  type: agg.type,
-                  cycle: {
-                    base: agg.cycle.base,
-                    factor: agg.cycle.factor
-                  }
-                }
-              }), {}) : undefined
-            } : undefined,
-            variable_air: consoAirVar ? {
-              id: consoAirVar.variableId,
-              name: consoAirVar.variableName,
-              energyType: 'Air',
-              aggregations: consoAirVar.aggregations ? Object.entries(consoAirVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
+            variable: consoVar ? {
+              id: consoVar.variableId,
+              name: consoVar.variableName,
+              energyType: energyType,
+              aggregations: consoVar.aggregations ? Object.entries(consoVar.aggregations).reduce<{ [key: string]: Aggregation }>((acc, [key, agg]: [string, any]) => ({
                 ...acc,
                 [key]: {
                   id: agg.id,
