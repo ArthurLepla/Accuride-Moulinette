@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --energy-electric: 210 100% 50%;
+    --energy-gas: 0 100% 50%;
+    --energy-water: 200 100% 50%;
+    --energy-air: 160 100% 50%;
+  }
+}
+
+@layer components {
+  .energy-card {
+    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+  }
+
+  .energy-card-header {
+    @apply flex flex-col space-y-1.5 p-6;
+  }
+
+  .energy-card-title {
+    @apply text-2xl font-semibold leading-none tracking-tight;
+  }
+
+  .energy-card-content {
+    @apply p-6 pt-0;
+  }
+
+  .energy-button {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .energy-button-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+
+  .energy-button-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+
+  .energy-button-outline {
+    @apply border border-input bg-background hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .energy-button-ghost {
+    @apply hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .energy-button-link {
+    @apply text-primary underline-offset-4 hover:underline;
+  }
+} 
