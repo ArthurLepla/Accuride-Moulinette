@@ -799,6 +799,16 @@ async function createVariableWithTag(
       dataType: tag.dataType || dataType,
       topic: tag.topic,
       connected: false
+    },
+    retention: {
+      settings: {
+        timeSettings: {
+          timeRange: {
+            base: "year",
+            factor: 6
+          }
+        }
+      }
     }
   };
 
@@ -1435,13 +1445,12 @@ export async function importFlexibleAssetsToIIH(data: FlexibleProcessedData) {
 function getUnitForEnergyType(energyType: string): string {
   switch (energyType.toLowerCase()) {
     case 'elec':
-      return 'kWh';
     case 'gaz':
-      return 'm3/h';
+      return 'kWh';
     case 'eau':
-      return 'm3/h';
+      return 'm3';
     case 'air':
-      return 'm3/h';
+      return 'm3';
     default:
       return 'kWh';
   }
@@ -1508,7 +1517,17 @@ async function createOrGetAggregatedVariable(
       formula,
       tags: tags
     },
-    connected: false
+    connected: false,
+    retention: {
+      settings: {
+        timeSettings: {
+          timeRange: {
+            base: "year",
+            factor: 6
+          }
+        }
+      }
+    }
   };
 
   logDebug(`Création variable Rule d'agrégation`, body);
