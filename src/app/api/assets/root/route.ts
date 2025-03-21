@@ -1,64 +1,55 @@
 import { NextResponse } from 'next/server';
-import { headers } from 'next/headers';
-import https from 'https';
-import nodeFetch from 'node-fetch';
+import { getAuthConfigFromHeaders } from '@/lib/auth';
 
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: false
-});
-
-export async function GET() {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
+export async function GET(request: Request) {
   try {
-    const headersList = await headers();
-    const authConfig = headersList.get('x-auth-config');
-    
+    const authConfig = getAuthConfigFromHeaders(request.headers);
     if (!authConfig) {
-      return NextResponse.json(
-        { error: 'Configuration d\'authentification manquante' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    const config = JSON.parse(authConfig);
-    
-    const url = `https://${config.iedIp}/iih-essentials/AssetService/Assets/Root`;
-    console.log('Tentative de connexion à:', url);
+    // Récupérer les paramètres de la requête
+    const url = new URL(request.url);
+    const includeChildren = url.searchParams.get('includeChildren') || 'false';
+    const includeBreadcrumb = url.searchParams.get('includeBreadcrumb') || 'false';
 
-    const response = await nodeFetch(url, {
+    // Utiliser directement l'URL fournie dans la configuration d'authentification
+    const apiUrl = `${authConfig.baseUrl}/AssetService/Assets/Root?includeChildren=${includeChildren}&includeBreadcrumb=${includeBreadcrumb}`;
+
+    console.log('Requête à l\'API Siemens pour le root asset:', {
+      url: apiUrl,
+      iedIp: authConfig.iedIp,
+      hasToken: !!authConfig.authToken
+    });
+
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.authToken}`,
-        'Host': config.iedIp
-      },
-      agent: httpsAgent
+        'Authorization': `Bearer ${authConfig.authToken}`
+      }
     });
-
-    console.log('Statut de la réponse:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur de réponse:', {
+      console.error('Erreur de réponse de l\'API Siemens:', {
         status: response.status,
         statusText: response.statusText,
-        url: url,
-        headers: Object.fromEntries(response.headers),
-        errorText: errorText
+        error: errorText
       });
-      throw new Error(`Erreur lors de la récupération de l'asset racine (${response.status}): ${errorText}`);
+      return NextResponse.json(
+        { error: `Erreur lors de la récupération de l'asset racine: ${errorText}` },
+        { status: response.status }
+      );
     }
 
     const data = await response.json();
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
     return NextResponse.json(data);
   } catch (error) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
     console.error('Erreur lors de la récupération de l\'asset racine:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Une erreur est survenue' },
+      { error: error instanceof Error ? error.message : 'Erreur inconnue' },
       { status: 500 }
     );
   }

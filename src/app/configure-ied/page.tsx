@@ -19,6 +19,7 @@ export default function ConfigureIEDPage() {
   const [authToken, setAuthToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     // Récupérer le profil sélectionné
@@ -40,18 +41,49 @@ export default function ConfigureIEDPage() {
     try {
       // Configuration de l'authentification
       const authConfig = {
-        baseUrl: `https://${iedIp}/iih-essentials`,
+        baseUrl: `http://${iedIp}:4203`,
         token: authToken,
         iedIp: iedIp,
         authToken: authToken,
         userProfile: profile.id
       };
 
+      // Sauvegarder la configuration
       localStorage.setItem('authConfig', JSON.stringify(authConfig));
+      
+      // Rediriger vers le dashboard
       router.push('/dashboard');
     } catch (err) {
       console.error('Erreur lors de la configuration:', err);
       setError('Erreur lors de la configuration. Veuillez vérifier vos informations.');
+      setIsLoading(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsLoading(true);
+    setError(null);
+    setTestResult(null);
+
+    try {
+      const response = await fetch('/api/test-connection');
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors du test de connexion');
+      }
+
+      const result = await response.json();
+      setTestResult({
+        success: result.success,
+        message: result.message
+      });
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Erreur lors du test de connexion'
+      });
+    } finally {
       setIsLoading(false);
     }
   };
@@ -139,17 +171,32 @@ export default function ConfigureIEDPage() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {isLoading ? (
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              'Se connecter'
-            )}
-          </button>
+          <div className="flex gap-4">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {isLoading ? 'Configuration en cours...' : 'Configurer'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={isLoading || !iedIp || !authToken}
+              className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              {isLoading ? 'Test en cours...' : 'Tester la connexion'}
+            </button>
+          </div>
+
+          {testResult && (
+            <div className={`p-4 rounded-lg ${
+              testResult.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {testResult.message}
+            </div>
+          )}
         </form>
 
         {/* Logo DV Group */}

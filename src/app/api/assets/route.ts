@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server';
-import https from 'https';
 import { IIHAssetBase, IIHAssetResponse } from '@/types/assets';
-import nodeFetch from 'node-fetch';
-import { getAuthConfigFromHeaders, getBaseUrl } from '@/lib/auth';
-
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: false
-});
+import { getAuthConfigFromHeaders } from '@/lib/auth';
 
 // Log conditionnel qui ne s'affiche que si le mode debug est activé
 function logDebug(message: string, data?: any) {
@@ -28,19 +22,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    const response = await nodeFetch(
-      `${getBaseUrl(request)}/AssetService/Assets/0?includeChildren=true`,
-      {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authConfig.authToken}`,
-          'Host': authConfig.iedIp
-        },
-        agent: httpsAgent
+    // Utiliser directement l'URL fournie dans la configuration d'authentification
+    const apiUrl = `${authConfig.baseUrl}/AssetService/Assets/0?includeChildren=true`;
+
+    console.log('Requête à l\'API Siemens pour les assets:', {
+      url: apiUrl,
+      hasToken: !!authConfig.authToken
+    });
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authConfig.authToken}`
       }
-    );
+    });
 
     if (!response.ok) {
       const errorData = await response.text();
@@ -84,52 +81,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    const data = await request.json();
-    logDebug('Données reçues pour création asset', data);
+    const body = await request.json();
+    
+    // Utiliser directement l'URL fournie dans la configuration d'authentification
+    const apiUrl = `${authConfig.baseUrl}/AssetService/Assets`;
 
-    // Adapter les données au format attendu par l'API IIH
-    const iihAssetData = {
-      name: data.name,
-      parentId: data.parentId,
-      type: data.type,
-      description: data.description || '',
-      locked: false,
-      aspects: []
-    };
+    console.log('Requête de création d\'asset avec la configuration:', {
+      url: apiUrl,
+      iedIp: authConfig.iedIp,
+      hasToken: !!authConfig.authToken,
+      body
+    });
 
-    logDebug('Données formatées pour IIH', iihAssetData);
-
-    const response = await nodeFetch(
-      `${getBaseUrl(request)}/AssetService/Assets`,
-      {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authConfig.authToken}`,
-          'Host': authConfig.iedIp
-        },
-        agent: httpsAgent,
-        body: JSON.stringify(iihAssetData)
-      }
-    );
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authConfig.authToken}`
+      },
+      body: JSON.stringify(body)
+    });
 
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error(`⚠️ Erreur création asset ${data.name}:`, response.status, errorData);
+      const errorText = await response.text();
+      console.error('Erreur de réponse de l\'API Siemens:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       return NextResponse.json(
-        { error: `Erreur API: ${response.status} - ${errorData}` },
+        { error: `Erreur lors de la création de l'asset: ${errorText}` },
         { status: response.status }
       );
     }
 
-    const responseData = await response.json();
-    console.log(`✅ Asset créé: ${responseData.name} (${responseData.assetId})`);
-    return NextResponse.json(responseData);
-  } catch (error: any) {
-    console.error('❌ Erreur proxy API:', error.message);
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Erreur lors de la création d\'un asset:', error);
     return NextResponse.json(
-      { error: error.message || 'Erreur interne du serveur' },
+      { error: error instanceof Error ? error.message : 'Erreur inconnue' },
       { status: 500 }
     );
   }

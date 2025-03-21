@@ -49,5 +49,6 @@ export function getAuthConfigFromHeaders(headers: Headers): AuthConfig | null {
 export const getBaseUrl = (request: Request) => {
   const authConfig = getAuthConfigFromHeaders(request.headers);
   if (!authConfig) throw new Error('Non authentifié');
-  return `https://${authConfig.iedIp}/iih-essentials`;
+  // Utiliser l'URL de base fournie dans la configuration d'authentification
+  return `http://${authConfig.iedIp}`;
 }; 
