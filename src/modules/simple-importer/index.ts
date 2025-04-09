@@ -3,6 +3,9 @@ import { getAuthConfig } from '@/lib/auth';
 import { importSimpleTestAsset, importFlexibleData, createVariablesForLevel5Assets, createVariablesHierarchiques } from './simpleAssetImporter';
 import { ImportConfiguration } from './types';
 
+// Export the updateIIHStructureWithAggregations function from importer.ts
+import { updateIIHStructureWithAggregations } from './importer';
+
 export * from './types';
 export * from './api';
 export { SimpleImporter } from './importer';
@@ -12,6 +15,7 @@ export {
   createVariablesForLevel5Assets,
   createVariablesHierarchiques
 } from './simpleAssetImporter';
+export { updateIIHStructureWithAggregations }; // Export the function
 
 /**
  * Crée une instance de SimpleImporter avec la configuration fournie
@@ -26,7 +30,8 @@ export function createSimpleImporter(
     {
       baseUrl,
       token,
-      iedIp
+      iedIp,
+      authToken: token
     },
     importConfig
   );

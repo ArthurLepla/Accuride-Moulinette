@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
 import { getAuthConfig } from '@/lib/auth';
-import { ChevronDown, ChevronRight, RefreshCw, Search, ChevronLeft, Settings2, AlertCircle, Check, X, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Search, ChevronLeft, Settings2, AlertCircle, Check, X, Plus, Beaker } from 'lucide-react';
 
 interface APIResponse {
   data: any;
@@ -581,6 +581,764 @@ const CreateVariableForm: React.FC<CreateVariableFormProps> = ({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// Composant pour la section de tests rapides
+interface TestResult {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+// Juste après l'interface TestResult
+interface AggregationInfo {
+  id: string;
+  sourceId: string;
+  variableName: string;
+  cycle: string;
+}
+
+const QuickTestSection: React.FC = () => {
+  const [testAssetId, setTestAssetId] = useState<string>('');
+  const [testAssetName, setTestAssetName] = useState<string>('Asset de Test');
+  const [testAssetCreated, setTestAssetCreated] = useState<boolean>(false);
+  const [testVariablesCreated, setTestVariablesCreated] = useState<boolean>(false);
+  const [testAggregationsCreated, setTestAggregationsCreated] = useState<boolean>(false);
+  const [testRetentionSet, setTestRetentionSet] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [results, setResults] = useState<TestResult[]>([]);
+
+  // Créer un asset de test
+  const createTestAsset = async () => {
+    setLoading(true);
+    try {
+      const authConfig = getAuthConfig();
+      if (!authConfig) {
+        addResult(false, 'Non authentifié');
+        return;
+      }
+
+      console.log('Configuration d\'authentification:', {
+        baseUrl: authConfig.baseUrl,
+        iedIp: authConfig.iedIp,
+        hasToken: !!authConfig.token
+      });
+
+      const assetData = {
+        name: testAssetName,
+        parentId: '0', // Utiliser '0' au lieu de 'Root' (l'ID racine est généralement '0')
+        metadata: {
+          description: 'Asset de test créé via Sandbox',
+          testAsset: true,
+          createdAt: new Date().toISOString()
+        }
+      };
+
+      console.log('Données envoyées pour la création d\'asset:', assetData);
+      
+      const response = await fetch('/api/assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Config': JSON.stringify(authConfig)
+        },
+        body: JSON.stringify(assetData)
+      });
+
+      console.log('Statut de la réponse:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erreur réponse API:', {
+          status: response.status,
+          error: errorText
+        });
+        throw new Error(`Erreur lors de la création de l'asset: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Asset créé avec succès:', data);
+      
+      setTestAssetId(data.assetId || data.id);
+      setTestAssetCreated(true);
+      addResult(true, `Asset de test créé avec succès: ${data.name} (${data.assetId || data.id})`, data);
+    } catch (error) {
+      // Gestion plus robuste de l'erreur
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Erreur lors de la création de l\'asset de test:', errorMessage);
+      addResult(false, `Erreur lors de la création de l'asset: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Créer des variables de test pour cet asset
+  const createTestVariables = async () => {
+    if (!testAssetId) {
+      addResult(false, 'Veuillez d\'abord créer un asset de test');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const authConfig = getAuthConfig();
+      if (!authConfig) {
+        addResult(false, 'Non authentifié');
+        return;
+      }
+
+      console.log('Création de variables pour l\'asset:', testAssetId);
+
+      // Créer 3 variables de test
+      const variables = [
+        {
+          variableName: 'Temperature',
+          assetId: testAssetId,
+          description: 'Variable de test - Température',
+          unit: '°C',
+          dataType: 'Float'
+        },
+        {
+          variableName: 'Pressure',
+          assetId: testAssetId,
+          description: 'Variable de test - Pression',
+          unit: 'bar',
+          dataType: 'Float'
+        },
+        {
+          variableName: 'Status',
+          assetId: testAssetId,
+          description: 'Variable de test - Statut',
+          dataType: 'Bool'
+        }
+      ];
+
+      const results = [];
+      
+      for (const variable of variables) {
+        console.log(`Création de la variable ${variable.variableName}:`, variable);
+        
+        const response = await fetch('/api/variables', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Config': JSON.stringify(authConfig)
+          },
+          body: JSON.stringify(variable)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Erreur pour ${variable.variableName}:`, {
+            status: response.status,
+            error: errorText
+          });
+          throw new Error(`Erreur lors de la création de la variable ${variable.variableName}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log(`Variable ${variable.variableName} créée avec succès:`, data);
+        results.push(data);
+      }
+
+      setTestVariablesCreated(true);
+      addResult(true, `${results.length} variables de test créées avec succès`, results);
+    } catch (error) {
+      console.error('Erreur lors de la création des variables de test:', error);
+      addResult(false, `Erreur lors de la création des variables: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Créer des agrégations pour les variables de test
+  const createTestAggregations = async () => {
+    if (!testVariablesCreated) {
+      addResult(false, 'Veuillez d\'abord créer des variables de test');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const authConfig = getAuthConfig();
+      if (!authConfig) {
+        addResult(false, 'Non authentifié');
+        return;
+      }
+
+      console.log('Récupération des variables pour l\'asset:', testAssetId);
+
+      const response = await fetch(`/api/variables?assetId=${testAssetId}`, {
+        headers: {
+          'X-Auth-Config': JSON.stringify(authConfig)
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erreur lors de la récupération des variables:', {
+          status: response.status,
+          error: errorText
+        });
+        throw new Error(`Erreur lors de la récupération des variables: ${errorText}`);
+      }
+
+      const variablesResponse = await response.json();
+      console.log('Variables récupérées:', variablesResponse);
+      
+      // Extraire le tableau de variables à partir de la réponse
+      const variables = Array.isArray(variablesResponse) 
+        ? variablesResponse 
+        : (variablesResponse.variables || []);
+      
+      if (!variables || variables.length === 0) {
+        throw new Error('Aucune variable trouvée pour cet asset');
+      }
+      
+      console.log(`${variables.length} variables trouvées pour traitement`);
+
+      // Créer des agrégations pour chaque variable
+      const aggregationResults = [];
+      
+      for (const variable of variables) {
+        const variableId = variable.id || variable.variableId;
+        const variableName = variable.name || variable.variableName || 'Variable sans nom';
+        
+        if (!variableId) {
+          console.warn(`Variable sans ID valide, ignorée:`, variable);
+          continue;
+        }
+        
+        if (variable.dataType === 'Bool') {
+          console.log(`Variable ${variableName} (${variableId}) de type Bool, agrégations ignorées`);
+          continue; // Pas d'agrégation pour les variables booléennes
+        }
+        
+        console.log(`Création d'agrégations pour ${variableName} (${variableId})`);
+        
+        const timeIntervals = [
+          { name: '5min', base: 'minute', factor: 5 },
+          { name: '1h', base: 'hour', factor: 1 },
+          { name: '4h', base: 'hour', factor: 4 },
+          { name: '8h', base: 'hour', factor: 8 },
+          { name: '1d', base: 'day', factor: 1 }
+        ];
+
+        // Récupération des agrégations existantes pour cette variable spécifique
+        try {
+          console.log(`Vérification des agrégations existantes pour ${variableName} (${variableId})`);
+          
+          // Construire une URL avec l'ID de la variable actuelle uniquement
+          const aggUrl = `/api/aggregations?sourceIds=${encodeURIComponent(JSON.stringify([variableId]))}`;
+          console.log(`URL de récupération des agrégations: ${aggUrl}`);
+          
+          const existingAggResponse = await fetch(aggUrl, {
+            headers: {
+              'X-Auth-Config': JSON.stringify(authConfig)
+            }
+          });
+          
+          if (!existingAggResponse.ok) {
+            const errorText = await existingAggResponse.text();
+            console.error(`Erreur lors de la récupération des agrégations pour ${variableName}:`, {
+              status: existingAggResponse.status,
+              error: errorText,
+              url: aggUrl
+            });
+            // Continuer avec les intervalles par défaut (aucune agrégation existante)
+          }
+          
+          // Récupérer et filtrer les agrégations existantes pour cette variable spécifique
+          let existingAggregations = [];
+          try {
+            const aggData = await existingAggResponse.json();
+            // Filtrer les résultats pour s'assurer qu'ils concernent bien la variable actuelle
+            existingAggregations = Array.isArray(aggData) 
+              ? aggData.filter((agg: any) => agg.sourceId === variableId)
+              : [];
+            console.log(`${existingAggregations.length} agrégations existantes trouvées pour ${variableName}:`, existingAggregations);
+          } catch (parseError) {
+            console.error(`Erreur de parsing pour les agrégations de ${variableName}:`, parseError);
+            existingAggregations = [];
+          }
+          
+          // Collecter les cycles existants au format base_factor pour faciliter la comparaison
+          const existingCycles = existingAggregations.map((agg: any) => {
+            if (!agg.cycle) {
+              console.warn(`Format d'agrégation inattendu (sans cycle):`, agg);
+              return '';
+            }
+            return `${agg.cycle.base}_${agg.cycle.factor}`;
+          }).filter(Boolean);
+          
+          console.log(`Cycles existants pour ${variableName}:`, existingCycles);
+
+          // Créer uniquement les agrégations manquantes
+          let createdCount = 0;
+          for (const interval of timeIntervals) {
+            try {
+              // Vérifier si cette agrégation existe déjà pour cette variable
+              const cycleKey = `${interval.base}_${interval.factor}`;
+              if (existingCycles.includes(cycleKey)) {
+                console.log(`L'agrégation ${interval.name} existe déjà pour ${variableName}, ignorée`);
+                continue;
+              }
+
+              console.log(`Création de l'agrégation ${interval.name} pour ${variableName}`);
+              const aggregationData = {
+                aggregation: 'Sum',
+                sourceId: variableId,
+                cycle: {
+                  base: interval.base,
+                  factor: interval.factor
+                },
+                provideAsVariable: true,
+                publishMqtt: false
+              };
+
+              console.log('Données d\'agrégation:', aggregationData);
+              const aggResponse = await fetch('/api/aggregations', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Auth-Config': JSON.stringify(authConfig)
+                },
+                body: JSON.stringify(aggregationData)
+              });
+
+              if (!aggResponse.ok) {
+                const errorText = await aggResponse.text();
+                console.error(`Erreur pour ${interval.name} sur ${variableName}:`, {
+                  status: aggResponse.status,
+                  error: errorText
+                });
+                continue;
+              }
+
+              let aggData;
+              try {
+                aggData = await aggResponse.json();
+                createdCount++;
+              } catch (parseError) {
+                console.error(`Erreur de parsing de la réponse pour ${interval.name}:`, parseError);
+                aggData = { id: 'unknown' };
+              }
+              
+              console.log(`Agrégation ${interval.name} créée avec succès pour ${variableName}:`, aggData);
+              aggregationResults.push({
+                variableName: variableName,
+                interval: interval.name,
+                aggregationId: aggData.id || 'unknown'
+              });
+            } catch (intervalError) {
+              console.error(`Erreur lors du traitement de l'intervalle ${interval.name}:`, intervalError);
+              // Continuer avec le prochain intervalle
+            }
+          }
+          
+          console.log(`${createdCount} nouvelles agrégations créées pour ${variableName}`);
+        } catch (aggError) {
+          console.error(`Erreur générale pour la variable ${variableName}:`, aggError);
+          // Continuer avec la prochaine variable
+        }
+      }
+
+      setTestAggregationsCreated(true);
+      addResult(true, `${aggregationResults.length} agrégations créées avec succès`, aggregationResults);
+    } catch (error) {
+      console.error('Erreur lors de la création des agrégations:', error);
+      addResult(false, `Erreur lors de la création des agrégations: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Configurer la rétention des données
+  const setTestDataRetention = async () => {
+    if (!testVariablesCreated) {
+      addResult(false, 'Veuillez d\'abord créer des variables de test');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const authConfig = getAuthConfig();
+      if (!authConfig) {
+        addResult(false, 'Non authentifié');
+        return;
+      }
+
+      console.log('Récupération des variables pour l\'asset:', testAssetId);
+
+      // Récupérer les variables de l'asset
+      const response = await fetch(`/api/variables?assetId=${testAssetId}`, {
+        headers: {
+          'X-Auth-Config': JSON.stringify(authConfig)
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erreur lors de la récupération des variables:', {
+          status: response.status,
+          error: errorText
+        });
+        throw new Error(`Erreur lors de la récupération des variables: ${errorText}`);
+      }
+
+      const variablesResponse = await response.json();
+      console.log('Variables récupérées:', variablesResponse);
+      
+      // Extraire le tableau de variables à partir de la réponse
+      const variables = Array.isArray(variablesResponse) 
+        ? variablesResponse 
+        : (variablesResponse.variables || []);
+      
+      if (!variables || variables.length === 0) {
+        throw new Error('Aucune variable trouvée pour cet asset');
+      }
+
+      console.log(`${variables.length} variables trouvées pour traitement de rétention`);
+
+      // Configuration de la rétention (6 ans) - en utilisant year comme base
+      const retentionConfig = {
+        timeSettings: {
+          timeRange: {
+            factor: 6,  // 6 ans
+            base: "year"
+          }
+        }
+      };
+
+      console.log('Configuration de rétention standard:', retentionConfig);
+      
+      // Récupérer les agrégations existantes pour toutes les variables
+      const allAggregations: AggregationInfo[] = [];
+      for (const variable of variables) {
+        if (variable.dataType === 'Bool') continue; // Pas d'agrégations pour les variables booléennes
+        
+        const variableId = variable.id || variable.variableId;
+        const variableName = variable.name || variable.variableName;
+        
+        try {
+          console.log(`Récupération des agrégations pour ${variableName} (${variableId})`);
+          const aggUrl = `/api/aggregations?sourceIds=${encodeURIComponent(JSON.stringify([variableId]))}`;
+          
+          const aggResponse = await fetch(aggUrl, {
+            headers: {
+              'X-Auth-Config': JSON.stringify(authConfig)
+            }
+          });
+          
+          if (aggResponse.ok) {
+            const aggregations = await aggResponse.json();
+            if (Array.isArray(aggregations) && aggregations.length > 0) {
+              console.log(`${aggregations.length} agrégations trouvées pour ${variableName}`);
+              aggregations.forEach(agg => {
+                allAggregations.push({
+                  id: agg.id,
+                  sourceId: agg.sourceId,
+                  variableName: variableName,
+                  cycle: `${agg.cycle?.base || 'unknown'}/${agg.cycle?.factor || 'unknown'}`
+                });
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Erreur lors de la récupération des agrégations pour ${variableName}:`, error);
+        }
+      }
+      
+      console.log(`Total de ${allAggregations.length} agrégations trouvées:`, allAggregations);
+
+      // Configurer la rétention pour chaque variable et ses agrégations
+      const variableRetentionResults = [];
+      const aggregationRetentionResults = [];
+      
+      // 1. Configurer la rétention pour les variables
+      for (const variable of variables) {
+        const variableId = variable.id || variable.variableId;
+        const variableName = variable.name || variable.variableName;
+        console.log(`Configuration de la rétention pour ${variableName} (${variableId})`);
+
+        const variableRetentionConfig = {
+          sourceTypeId: "Variable",
+          sourceId: variableId,
+          settings: retentionConfig
+        };
+
+        try {
+          // D'abord essayer de créer (POST) la configuration de rétention
+          const createResponse = await fetch('/api/retention', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Auth-Config': JSON.stringify(authConfig)
+            },
+            body: JSON.stringify(variableRetentionConfig)
+          });
+
+          if (!createResponse.ok) {
+            console.log(`Création de rétention impossible pour ${variableName}, tentative de mise à jour...`);
+            
+            // Si la création échoue, essayer de mettre à jour (PUT)
+            const updateResponse = await fetch('/api/retention', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Auth-Config': JSON.stringify(authConfig)
+              },
+              body: JSON.stringify(variableRetentionConfig)
+            });
+
+            if (!updateResponse.ok) {
+              const errorText = await updateResponse.text();
+              console.error(`Erreur pour ${variableName}:`, errorText);
+              continue;
+            }
+
+            console.log(`Rétention mise à jour pour ${variableName}`);
+            variableRetentionResults.push({
+              variableName: variableName,
+              variableId: variableId,
+              retention: '6 ans',
+              method: 'UPDATE'
+            });
+          } else {
+            console.log(`Rétention créée pour ${variableName}`);
+            variableRetentionResults.push({
+              variableName: variableName,
+              variableId: variableId,
+              retention: '6 ans',
+              method: 'CREATE'
+            });
+          }
+        } catch (error) {
+          console.error(`Erreur lors de la configuration de la rétention pour ${variableName}:`, error);
+        }
+      }
+      
+      // 2. Configurer la rétention pour les agrégations
+      for (const aggregation of allAggregations) {
+        const aggregationId = aggregation.id;
+        console.log(`Configuration de la rétention pour l'agrégation ${aggregationId} (${aggregation.cycle}) de ${aggregation.variableName}`);
+
+        const aggregationRetentionConfig = {
+          sourceTypeId: "aggregation", // Corriger la casse
+          sourceId: aggregationId,
+          settings: retentionConfig
+        };
+
+        try {
+          // D'abord essayer de créer (POST) la configuration de rétention
+          const createResponse = await fetch('/api/retention', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Auth-Config': JSON.stringify(authConfig)
+            },
+            body: JSON.stringify(aggregationRetentionConfig)
+          });
+
+          if (!createResponse.ok) {
+            console.log(`Création de rétention impossible pour l'agrégation ${aggregationId}, tentative de mise à jour...`);
+            
+            // Si la création échoue, essayer de mettre à jour (PUT)
+            const updateResponse = await fetch('/api/retention', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Auth-Config': JSON.stringify(authConfig)
+              },
+              body: JSON.stringify(aggregationRetentionConfig)
+            });
+
+            if (!updateResponse.ok) {
+              const errorText = await updateResponse.text();
+              console.error(`Erreur pour l'agrégation ${aggregationId}:`, errorText);
+              continue;
+            }
+
+            console.log(`Rétention mise à jour pour l'agrégation ${aggregationId}`);
+            aggregationRetentionResults.push({
+              variableName: aggregation.variableName,
+              aggregationId: aggregationId,
+              cycle: aggregation.cycle,
+              retention: '6 ans',
+              method: 'UPDATE'
+            });
+          } else {
+            console.log(`Rétention créée pour l'agrégation ${aggregationId}`);
+            aggregationRetentionResults.push({
+              variableName: aggregation.variableName,
+              aggregationId: aggregationId,
+              cycle: aggregation.cycle,
+              retention: '6 ans',
+              method: 'CREATE'
+            });
+          }
+        } catch (error) {
+          console.error(`Erreur lors de la configuration de rétention pour l'agrégation ${aggregationId}:`, error);
+        }
+      }
+
+      const totalResults = variableRetentionResults.length + aggregationRetentionResults.length;
+      if (totalResults > 0) {
+        setTestRetentionSet(true);
+        addResult(
+          true, 
+          `Rétention de données configurée pour ${variableRetentionResults.length} variables et ${aggregationRetentionResults.length} agrégations`, 
+          { variables: variableRetentionResults, aggregations: aggregationRetentionResults }
+        );
+      } else {
+        throw new Error('Aucune rétention n\'a pu être configurée');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la configuration de la rétention:', error);
+      addResult(false, `Erreur lors de la configuration de la rétention: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Afficher un résultat 
+  const addResult = (success: boolean, message: string, data?: any) => {
+    setResults(prev => [{ success, message, data }, ...prev]);
+  };
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6">
+      <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+        <Beaker className="h-5 w-5 text-blue-400" />
+        Tests Rapides IIH
+      </h2>
+      
+      <div className="space-y-4 mb-6">
+        {/* Configurations */}
+        <div className="bg-gray-700 rounded-lg p-4">
+          <h3 className="text-lg font-medium text-white mb-2">Configuration</h3>
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="testAssetName" className="block text-sm text-gray-400 mb-1">
+                Nom de l'asset de test
+              </label>
+              <input
+                id="testAssetName"
+                type="text"
+                value={testAssetName}
+                onChange={(e) => setTestAssetName(e.target.value)}
+                className="w-full bg-gray-600 border border-gray-500 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      
+        {/* Actions de test */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={createTestAsset}
+            disabled={loading || testAssetCreated}
+            className={`px-4 py-3 rounded-lg text-white font-medium ${
+              loading 
+                ? 'bg-gray-600 cursor-not-allowed' 
+                : testAssetCreated 
+                  ? 'bg-green-600 cursor-default' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+            } transition-colors`}
+          >
+            {testAssetCreated ? '✓ Asset créé' : '1. Créer un asset de test'}
+          </button>
+          
+          <button
+            onClick={createTestVariables}
+            disabled={loading || !testAssetCreated || testVariablesCreated}
+            className={`px-4 py-3 rounded-lg text-white font-medium ${
+              loading || !testAssetCreated
+                ? 'bg-gray-600 cursor-not-allowed'
+                : testVariablesCreated
+                  ? 'bg-green-600 cursor-default'
+                  : 'bg-blue-600 hover:bg-blue-700'
+            } transition-colors`}
+          >
+            {testVariablesCreated ? '✓ Variables créées' : '2. Créer des variables de test'}
+          </button>
+          
+          <button
+            onClick={createTestAggregations}
+            disabled={loading || !testVariablesCreated || testAggregationsCreated}
+            className={`px-4 py-3 rounded-lg text-white font-medium ${
+              loading || !testVariablesCreated
+                ? 'bg-gray-600 cursor-not-allowed'
+                : testAggregationsCreated
+                  ? 'bg-green-600 cursor-default'
+                  : 'bg-blue-600 hover:bg-blue-700'
+            } transition-colors`}
+          >
+            {testAggregationsCreated ? '✓ Agrégations créées' : '3. Créer des agrégations'}
+          </button>
+          
+          <button
+            onClick={setTestDataRetention}
+            disabled={loading || !testVariablesCreated || testRetentionSet}
+            className={`px-4 py-3 rounded-lg text-white font-medium ${
+              loading || !testVariablesCreated
+                ? 'bg-gray-600 cursor-not-allowed'
+                : testRetentionSet
+                  ? 'bg-green-600 cursor-default'
+                  : 'bg-blue-600 hover:bg-blue-700'
+            } transition-colors`}
+          >
+            {testRetentionSet ? '✓ Rétention configurée' : '4. Configurer la rétention (6 ans)'}
+          </button>
+        </div>
+      </div>
+      
+      {/* Résultats des tests */}
+      <div className="bg-gray-900 rounded-lg p-4 mt-4">
+        <h3 className="text-lg font-medium text-white mb-4">Résultats</h3>
+        
+        {results.length === 0 ? (
+          <div className="text-gray-400 text-center py-6">
+            Aucun test exécuté
+          </div>
+        ) : (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            {results.map((result, index) => (
+              <div 
+                key={index} 
+                className={`p-4 rounded-lg border-l-4 ${
+                  result.success 
+                    ? 'bg-green-900/20 border-green-500' 
+                    : 'bg-red-900/20 border-red-500'
+                }`}
+              >
+                <div className="flex items-start">
+                  <div className={`flex-shrink-0 ${result.success ? 'text-green-400' : 'text-red-400'}`}>
+                    {result.success ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                  </div>
+                  <div className="ml-3">
+                    <p className={`text-sm font-medium ${result.success ? 'text-green-400' : 'text-red-400'}`}>
+                      {result.message}
+                    </p>
+                    {result.data && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-gray-400 cursor-pointer">
+                          Voir les détails
+                        </summary>
+                        <pre className="mt-2 text-xs text-gray-400 overflow-auto max-h-60 bg-gray-800 p-2 rounded">
+                          {JSON.stringify(result.data, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1238,7 +1996,10 @@ export default function SandboxPage() {
           setAvailableConnections(adapters);
         }
       } catch (error) {
-        console.error('Erreur lors du chargement des adapters:', error);
+        // Gestion plus robuste de l'erreur
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('Erreur lors du chargement des adapters:', errorMessage);
+        
         if (mounted) {
           setAvailableConnections([]);
         }
@@ -1346,7 +2107,10 @@ export default function SandboxPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+          {/* Section de tests rapides */}
+          <QuickTestSection />
+          
           {/* Section de contrôle */}
           <div className="space-y-6">
             {/* Barre de recherche */}

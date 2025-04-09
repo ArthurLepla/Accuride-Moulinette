@@ -41,7 +41,7 @@ export default function ConfigureIEDPage() {
     try {
       // Configuration de l'authentification
       const authConfig = {
-        baseUrl: `http://${iedIp}:4203`,
+        baseUrl: `https://${iedIp}`,
         token: authToken,
         iedIp: iedIp,
         authToken: authToken,
@@ -66,7 +66,22 @@ export default function ConfigureIEDPage() {
     setTestResult(null);
 
     try {
-      const response = await fetch('/api/test-connection');
+      // Créer la configuration d'authentification
+      const authConfig = {
+        baseUrl: `https://${iedIp}`,
+        token: authToken,
+        iedIp: iedIp,
+        authToken: authToken,
+        userProfile: profile?.id || ''
+      };
+
+      // Appeler l'API avec la configuration dans les headers
+      const response = await fetch('/api/test-connection', {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Config': JSON.stringify(authConfig)
+        }
+      });
 
       if (!response.ok) {
         const errorData = await response.json();

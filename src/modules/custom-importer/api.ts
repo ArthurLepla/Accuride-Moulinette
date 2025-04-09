@@ -1,15 +1,21 @@
-import { AuthConfig, IIHAsset, IIHVariable, BulkCreateVariablesResponse } from './types';
+import { AuthConfig, IIHAsset, IIHVariable, BulkCreateVariablesResponse } from '../simple-importer/types';
+import { sanitizeNameForVariable } from '../simple-importer/helpers';
 import https from 'https';
 import nodeFetch, { RequestInit as NodeFetchRequestInit } from 'node-fetch';
 import axios, { AxiosInstance, CreateAxiosDefaults } from 'axios';
 
-// Define and export the interface for Aggregation data
-export interface AggregationInfo { 
+// Define the interface for Aggregation data locally if not imported
+// (This should have been copied from the original api.ts)
+interface AggregationInfo { 
   id: string; 
-  type?: string; // Make optional as it might not always be present or needed everywhere
+  type?: string;
   cycle?: { base: string; factor: number };
-  sourceId?: string; // Should be present in API response
-  // Add other relevant properties if needed based on the actual API response
+  sourceId?: string;
+}
+
+// Define a specific interface for hierarchical asset creation input
+interface AssetToCreateHierarchically extends Partial<IIHAsset> {
+  path?: string[];
 }
 
 export class IIHApi {
@@ -1072,6 +1078,114 @@ export class IIHApi {
     } catch (error) {
       console.error(`Erreur lors de la récupération de la configuration de rétention pour ${sourceType} ${sourceId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Crée des assets hiérarchiquement en résolvant les dépendances parent/enfant.
+   * @param assetsToCreate Liste des assets à créer, avec parentId sous forme de chemin.
+   * @returns Liste des assets créés avec leurs iihId.
+   */
+  async createAssetsHierarchically(assetsToCreate: AssetToCreateHierarchically[]): Promise<IIHAsset[]> {
+    console.log(`Tentative de création hiérarchique de ${assetsToCreate.length} assets...`);
+
+    if (!assetsToCreate || assetsToCreate.length === 0) {
+      console.log("Aucun asset à créer.");
+      return [];
+    }
+
+    // Map pour stocker les ID IIH des assets créés, indexés par leur chemin ('/'-separated string)
+    const createdAssetsMap = new Map<string, string>(); // Map<pathString, iihId>
+    const createdAssets: IIHAsset[] = []; // Array to store the final created assets
+    const creationErrors: any[] = []; // Array to store errors during creation
+
+    try {
+      // 1. Récupérer l'asset racine pour les assets de premier niveau
+      const rootAsset = await this.getRootAsset();
+      const rootAssetId = rootAsset.assetId;
+      console.log(`Asset racine récupéré: ${rootAsset.name} (ID: ${rootAssetId})`);
+      createdAssetsMap.set('', rootAssetId); // La racine correspond au chemin vide
+
+      // 2. Trier les assets par profondeur de chemin pour créer les parents avant les enfants
+      assetsToCreate.sort((a, b) => (a.path || []).length - (b.path || []).length);
+
+      console.log('Assets triés par profondeur:', assetsToCreate.map(a => ({ name: a.name, path: a.path })));
+
+      // 3. Créer les assets un par un en résolvant le parentId
+      for (const assetData of assetsToCreate) {
+        const assetPath = assetData.path || []; 
+        const parentPathArray = assetPath.slice(0, -1); 
+        const parentPathString = parentPathArray.join('/');
+        const currentPathString = assetPath.join('/');
+
+        console.log(`Traitement de l'asset: ${assetData.name}, Path: ${currentPathString}, Parent Path: ${parentPathString}`);
+
+        // Check if already created (based on path)
+        if (createdAssetsMap.has(currentPathString)) {
+           console.log(`  -> Asset avec chemin ${currentPathString} déjà traité/créé. Ignoré.`);
+           continue;
+        }
+
+        // Déterminer le parentId IIH
+        let parentId: string | null = null;
+        if (assetPath.length === 0) {
+          console.warn(`  Asset sans chemin trouvé: ${assetData.name}. Tentative d'utilisation de la racine.`);
+          parentId = rootAssetId;
+        } else if (parentPathArray.length === 0) {
+          parentId = rootAssetId;
+          console.log(`  Parent résolu pour ${assetData.name}: Racine (ID: ${parentId})`);
+        } else {
+          parentId = createdAssetsMap.get(parentPathString) || null;
+          if (parentId) {
+             console.log(`  Parent résolu pour ${assetData.name}: ${parentPathString} (ID: ${parentId})`);
+          } else {
+              console.error(`❌ Impossible de trouver le parentId IIH pour l'asset ${assetData.name} avec le chemin parent '${parentPathString}'. Ignoré.`);
+              creationErrors.push({ assetName: assetData.name, path: currentPathString, error: 'Parent ID not found in cache' });
+              continue; // Skip this asset if parent cannot be resolved
+          }
+        }
+
+        // Préparer les données pour la création (sans le chemin temporaire et avec le vrai parentId)
+        const assetToCreateApi: Partial<IIHAsset> = {
+          ...assetData,
+          name: sanitizeNameForVariable(assetData.name || ''),
+          parentId: parentId,
+        };
+        delete (assetToCreateApi as any).path; // Use type assertion to delete path
+
+        try {
+          console.log(`  Création de l'asset: ${assetToCreateApi.name} avec parentId: ${parentId}...`);
+          const createdAsset = await this.createAsset(assetToCreateApi);
+          console.log(`  ✅ Asset créé: ${createdAsset.name} (ID IIH: ${createdAsset.assetId})`);
+
+          createdAssetsMap.set(currentPathString, createdAsset.assetId); // Store ID by path
+          createdAssets.push(createdAsset); // Add to the list of successfully created assets
+
+        } catch (createError: any) {
+          console.error(`  ❌ Erreur lors de la création de l'asset ${assetData.name}:`, createError);
+          creationErrors.push({ assetName: assetData.name, path: currentPathString, error: createError?.message || createError });
+        }
+        // Add a small delay between asset creations
+        await new Promise(resolve => setTimeout(resolve, 50)); 
+      } // End for loop
+
+      console.log(`Création hiérarchique terminée. ${createdAssets.length} assets créés sur ${assetsToCreate.length} demandés.`);
+      if (creationErrors.length > 0) {
+          console.error("Erreurs rencontrées lors de la création hiérarchique:", creationErrors);
+          // Optionally throw an error or handle partial success
+          // throw new Error(`Failed to create ${creationErrors.length} assets hierarchically.`);
+      }
+      return createdAssets;
+
+    } catch (error: any) {
+      console.error('Erreur majeure lors de la création hiérarchique des assets:', error);
+      // Return potentially partially created assets along with reporting the major error
+      if (creationErrors.length > 0) {
+          console.error("Erreurs cumulées avant l'erreur majeure:", creationErrors);
+      }
+      throw new Error(`Échec majeur de la création hiérarchique: ${error.message}`); 
+      // Or return createdAssets if partial success is acceptable:
+      // return createdAssets; 
     }
   }
 } 

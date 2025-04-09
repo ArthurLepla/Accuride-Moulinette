@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
+import { extractRouteParams } from '@/lib/route-helper';
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const id = await Promise.resolve(params.id);
+  const { id } = extractRouteParams(params);
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
   try {
@@ -56,6 +57,7 @@ export async function PUT(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  const { id } = extractRouteParams(params);
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
   try {
@@ -70,7 +72,7 @@ export async function PUT(
     }
 
     const config = JSON.parse(authConfig);
-    const assetId = params.id;
+    const assetId = id;
     const updateData = await request.json();
     
     let baseUrl = config.baseUrl;

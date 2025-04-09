@@ -47,7 +47,7 @@ export async function GET() {
       
       // Si nous n'avons pas réussi à récupérer des adapters, faire une tentative directe
       console.log('Test Adapters API - Tentative directe via fetch');
-      const url = `${authConfig.baseUrl}/DataService/Adapters`;
+      const url = `https://${authConfig.iedIp}/iih-essentials/DataService/Adapters`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {

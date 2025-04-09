@@ -219,6 +219,7 @@ export function ImportValidationModal({ isOpen, onClose, data, onImportSuccess }
   const [stepResults, setStepResults] = useState<Array<{ isValid: boolean; errors: string[]; details?: any[] } | null>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     if (isOpen && data) {
@@ -254,29 +255,39 @@ export function ImportValidationModal({ isOpen, onClose, data, onImportSuccess }
   };
 
   const handleImport = async () => {
-    setIsLoading(true);
+    setIsImporting(true);
     setError(null);
     
     try {
-      console.log('Début de l\'import avec les données:', data);
+      // Stocker les données brutes dans localStorage pour une utilisation ultérieure
+      // par la fonction d'enrichissement des assets
+      try {
+        localStorage.setItem('importedExcelData', JSON.stringify(data));
+        console.log(`Données Excel sauvegardées (${data.length} lignes) pour enrichissement ultérieur`);
+      } catch (storageError) {
+        console.warn('Échec de la sauvegarde des données Excel dans localStorage:', storageError);
+      }
       
-      // Utiliser importAssetsFromExcel au lieu de créer directement les assets
       const result = await importAssetsFromExcel(data);
+      setIsImporting(false);
       
       if (result.success) {
-        console.log('Import réussi:', result);
+        // Afficher un message de succès dans la console
+        console.log(`Succès: ${result.message}`);
+        
+        // Déclencher le callback de succès si fourni
         if (onImportSuccess) {
           onImportSuccess();
         }
+        
+        // Fermer la modale
         onClose();
       } else {
-        throw new Error('Échec de l\'import');
+        setError(result.message || 'Erreur lors de l\'import');
       }
     } catch (error) {
-      console.error('Erreur lors de l\'import:', error);
-      setError(error instanceof Error ? error.message : 'Une erreur est survenue lors de l\'import');
-    } finally {
-      setIsLoading(false);
+      setIsImporting(false);
+      setError(error instanceof Error ? error.message : 'Erreur inconnue lors de l\'import');
     }
   };
 

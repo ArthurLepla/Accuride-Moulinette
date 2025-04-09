@@ -9,6 +9,9 @@ interface CreateAssetParams {
   metadata?: {
     sector?: string;
     workshop?: string | null;
+    energyType?: EnergyType;
+    sourceSystem?: string;
+    importDate?: string;
   };
 }
 
@@ -118,6 +121,8 @@ interface IIHMachine extends IIHAssetBase {
     name: string;
   };
   mendixEntity?: any;
+  // Ajouter des propriétés dynamiques pour les variables IPE par type d'énergie
+  [key: string]: any;
 }
 
 interface IIHWorkshop extends IIHAssetBase {
@@ -328,10 +333,20 @@ async function createOrGetAsset(params: CreateAssetParams) {
   }
 
   console.log(`📍 Création d'un nouvel asset: ${sanitizedName}`);
+  // Logs des métadonnées
+  console.log(`📊 Métadonnées:`, params.metadata);
+  
   const authConfig = getAuthConfig();
   if (!authConfig) {
     throw new Error('Non authentifié');
   }
+
+  // Préparation de la requête
+  const requestBody = {
+    ...params,
+    name: sanitizedName
+  };
+  console.log(`🚀 Requête complète:`, JSON.stringify(requestBody, null, 2));
 
   const response = await fetch('/api/assets', {
     method: 'POST',
@@ -339,10 +354,7 @@ async function createOrGetAsset(params: CreateAssetParams) {
       'Content-Type': 'application/json',
       'X-Auth-Config': JSON.stringify(authConfig)
     },
-    body: JSON.stringify({
-      ...params,
-      name: sanitizedName
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -356,6 +368,8 @@ async function createOrGetAsset(params: CreateAssetParams) {
 
   const newAsset = await response.json();
   console.log(`✅ Nouvel asset créé: ${newAsset.assetId}`);
+  // Vérifier les métadonnées dans la réponse
+  console.log(`📊 Métadonnées dans l'asset créé:`, newAsset.metadata || 'Aucune métadonnée');
   return newAsset;
 }
 
@@ -473,6 +487,7 @@ async function createProductionQuantiteVariable(machineName: string, assetId: st
   );
 }
 
+// Fonction originale maintenue pour rétrocompatibilité
 async function createIPEKgVariable(machineName: string, assetId: string) {
   return await createVariable(
     `IPE_kg_${machineName}`,
@@ -484,6 +499,7 @@ async function createIPEKgVariable(machineName: string, assetId: string) {
   );
 }
 
+// Fonction originale maintenue pour rétrocompatibilité
 async function createIPEQuantiteVariable(machineName: string, assetId: string) {
   return await createVariable(
     `IPE_quantite_${machineName}`,
@@ -493,6 +509,55 @@ async function createIPEQuantiteVariable(machineName: string, assetId: string) {
     'kWh/pcs',
     `Indicateur de performance énergétique en quantité pour la machine ${machineName}`
   );
+}
+
+// Nouvelles fonctions qui prennent en compte le type d'énergie
+async function createIPEKgVariableWithEnergyType(machineName: string, assetId: string, energyType: string) {
+  return await createVariable(
+    `IPE_kg_${energyType}_${machineName}`,
+    assetId,
+    '',
+    'FLOAT32',
+    'kWh/kg',
+    `Indicateur de performance énergétique en kg (${energyType}) pour la machine ${machineName}`
+  );
+}
+
+async function createIPEQuantiteVariableWithEnergyType(machineName: string, assetId: string, energyType: string) {
+  return await createVariable(
+    `IPE_${energyType}_${machineName}`,
+    assetId,
+    '',
+    'FLOAT32',
+    'kWh/pcs',
+    `Indicateur de performance énergétique en quantité (${energyType}) pour la machine ${machineName}`
+  );
+}
+
+// Fonction pour créer les variables IPE pour tous les types d'énergie
+async function createAllIPEVariablesByEnergyType(machineName: string, assetId: string) {
+  const energyTypes = ['elec', 'gaz', 'eau', 'air'];
+  const result: {
+    ipeKgVariables: Record<string, any>;
+    ipeQuantiteVariables: Record<string, any>;
+  } = {
+    ipeKgVariables: {},
+    ipeQuantiteVariables: {}
+  };
+  
+  for (const energyType of energyTypes) {
+    // Création des variables IPE kg par type d'énergie
+    const ipeKgVar = await createIPEKgVariableWithEnergyType(machineName, assetId, energyType);
+    console.log(`✅ Variable IPE_kg_${energyType} créée avec l'ID: ${ipeKgVar.variableId}`);
+    result.ipeKgVariables[energyType] = ipeKgVar;
+    
+    // Création des variables IPE quantité par type d'énergie
+    const ipeQuantiteVar = await createIPEQuantiteVariableWithEnergyType(machineName, assetId, energyType);
+    console.log(`✅ Variable IPE_${energyType} créée avec l'ID: ${ipeQuantiteVar.variableId}`);
+    result.ipeQuantiteVariables[energyType] = ipeQuantiteVar;
+  }
+  
+  return result;
 }
 
 // Fonction pour créer une transformation (variable calculée à partir d'autres variables)
@@ -631,12 +696,11 @@ async function createIntermediateAssetAttributes(
     console.log(`📍 Création des attributs pour le niveau intermédiaire: ${assetName}`);
     
     // Création des variables IPE et Production
-    const ipeKgVariable = await createIPEKgVariable(assetName, assetId);
-    console.log(`✅ Variable IPE (kg) créée avec l'ID: ${ipeKgVariable.variableId}`);
+    // Utilisation des nouvelles fonctions pour créer les variables IPE par type d'énergie
+    const ipeVariables = await createAllIPEVariablesByEnergyType(assetName, assetId);
+    console.log(`✅ Variables IPE créées pour tous les types d'énergie`);
     
-    const ipeQuantiteVariable = await createIPEQuantiteVariable(assetName, assetId);
-    console.log(`✅ Variable IPE (quantité) créée avec l'ID: ${ipeQuantiteVariable.variableId}`);
-    
+    // Création des variables de production comme avant
     const productionKgVariable = await createProductionKgVariable(assetName, assetId);
     console.log(`✅ Variable Production (kg) créée avec l'ID: ${productionKgVariable.variableId}`);
     
@@ -660,8 +724,19 @@ async function createIntermediateAssetAttributes(
     
     // Créer les agrégations
     console.log(`📊 Création des agrégations pour le niveau intermédiaire: ${assetName}`);
-    const ipeKgAggregations: { [key: string]: any } = {};
-    const ipeQuantiteAggregations: { [key: string]: any } = {};
+    
+    // Objets pour stocker les agrégations par type d'énergie
+    const ipeKgAggregationsByType: Record<string, Record<string, any>> = {};
+    const ipeQuantiteAggregationsByType: Record<string, Record<string, any>> = {};
+    
+    // Initialiser les objets d'agrégation pour chaque type d'énergie
+    const energyTypes = ['elec', 'gaz', 'eau', 'air'];
+    for (const energyType of energyTypes) {
+      ipeKgAggregationsByType[energyType] = {};
+      ipeQuantiteAggregationsByType[energyType] = {};
+    }
+    
+    // Agrégations pour les variables de production
     const productionKgAggregations: { [key: string]: any } = {};
     const productionQuantiteAggregations: { [key: string]: any } = {};
     const consommationAggregations: { [key: string]: any } = {};
@@ -676,21 +751,39 @@ async function createIntermediateAssetAttributes(
     ];
     
     for (const interval of timeIntervals) {
-      // Agrégations IPE et Production
-      const aggIPEKg = await createAggregation(ipeKgVariable.variableId, 'Sum', interval.base, interval.factor);
-      ipeKgAggregations[interval.name] = {
-        id: aggIPEKg.id,
-        type: 'Sum',
-        cycle: { base: interval.base, factor: interval.factor }
-      };
+      // Agrégations pour les variables IPE par type d'énergie
+      for (const energyType of energyTypes) {
+        // Vérifier que les variables existent
+        if (ipeVariables.ipeKgVariables[energyType] && ipeVariables.ipeQuantiteVariables[energyType]) {
+          // Agrégation IPE_kg par type d'énergie
+          const aggIPEKg = await createAggregation(
+            ipeVariables.ipeKgVariables[energyType].variableId, 
+            'Sum', 
+            interval.base, 
+            interval.factor
+          );
+          ipeKgAggregationsByType[energyType][interval.name] = {
+            id: aggIPEKg.id,
+            type: 'Sum',
+            cycle: { base: interval.base, factor: interval.factor }
+          };
+          
+          // Agrégation IPE_quantite par type d'énergie
+          const aggIPEQuantite = await createAggregation(
+            ipeVariables.ipeQuantiteVariables[energyType].variableId, 
+            'Sum', 
+            interval.base, 
+            interval.factor
+          );
+          ipeQuantiteAggregationsByType[energyType][interval.name] = {
+            id: aggIPEQuantite.id,
+            type: 'Sum',
+            cycle: { base: interval.base, factor: interval.factor }
+          };
+        }
+      }
       
-      const aggIPEQuantite = await createAggregation(ipeQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
-      ipeQuantiteAggregations[interval.name] = {
-        id: aggIPEQuantite.id,
-        type: 'Sum',
-        cycle: { base: interval.base, factor: interval.factor }
-      };
-      
+      // Agrégations pour les variables de production
       const aggProdKg = await createAggregation(productionKgVariable.variableId, 'Sum', interval.base, interval.factor);
       productionKgAggregations[interval.name] = {
         id: aggProdKg.id,
@@ -718,16 +811,6 @@ async function createIntermediateAssetAttributes(
     
     // Préparer et retourner les informations sur les variables créées
     const result: any = {
-      ipeKgVariable: {
-        id: ipeKgVariable.variableId,
-        name: `IPE_kg_${assetName}`,
-        aggregations: ipeKgAggregations
-      },
-      ipeQuantiteVariable: {
-        id: ipeQuantiteVariable.variableId,
-        name: `IPE_quantite_${assetName}`,
-        aggregations: ipeQuantiteAggregations
-      },
       productionKgVariable: {
         id: productionKgVariable.variableId,
         name: `Production_kg_${assetName}`,
@@ -740,6 +823,25 @@ async function createIntermediateAssetAttributes(
       }
     };
     
+    // Ajouter les variables IPE pour chaque type d'énergie
+    for (const type of energyTypes) {
+      if (ipeVariables.ipeKgVariables[type] && ipeVariables.ipeQuantiteVariables[type]) {
+        // Utiliser une assertion de type pour éviter les erreurs de typage pour les propriétés dynamiques
+        (result as any)[`ipeKgVariable_${type}`] = {
+          id: ipeVariables.ipeKgVariables[type].variableId,
+          name: `IPE_kg_${type}_${assetName}`,
+          aggregations: ipeKgAggregationsByType[type]
+        };
+        
+        (result as any)[`ipeVariable_${type}`] = {
+          id: ipeVariables.ipeQuantiteVariables[type].variableId,
+          name: `IPE_${type}_${assetName}`,
+          aggregations: ipeQuantiteAggregationsByType[type]
+        };
+      }
+    }
+    
+    // Ajouter la variable de consommation si c'est l'avant-dernier niveau
     if (isSecondLastLevel && consommationVariable) {
       result.consommationVariable = {
         id: consommationVariable.variableId,
@@ -838,7 +940,12 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
             name: item.machine,
             description: `Machine ${item.machine} - Type: ${item.type}`,
             parentId: '0',
-            type: 'machine'
+            type: 'machine',
+            metadata: {
+              energyType: item.type,  // Ajouter le type d'énergie aux métadonnées
+              sourceSystem: 'excel-import',
+              importDate: new Date().toISOString()
+            }
           });
 
           // Créer la variable de consommation
@@ -859,12 +966,10 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
           const productionQuantiteVariable = await createProductionQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
           console.log(`      ✅ Variable de production (quantité) créée avec l'ID: ${productionQuantiteVariable.variableId}`);
 
-          // Variables IPE (kg et quantité)
-          const ipeKgVariable = await createIPEKgVariable(sanitizedMachineName, machineAsset.assetId);
-          console.log(`      ✅ Variable IPE (kg) créée avec l'ID: ${ipeKgVariable.variableId}`);
-
-          const ipeQuantiteVariable = await createIPEQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
-          console.log(`      ✅ Variable IPE (quantité) créée avec l'ID: ${ipeQuantiteVariable.variableId}`);
+          // Variables IPE par type d'énergie
+          const energyType = item.type || 'elec'; // Utiliser le type d'énergie de la machine ou 'elec' par défaut
+          const ipeVariables = await createAllIPEVariablesByEnergyType(sanitizedMachineName, machineAsset.assetId);
+          console.log(`      ✅ Variables IPE créées pour tous les types d'énergie`);
 
           // Variable d'état du capteur
           const stateVariable = await createSensorStateVariable(sanitizedMachineName, machineAsset.assetId);
@@ -880,8 +985,17 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
           const aggregations: { [key: string]: any } = {};
           const productionKgAggregations: { [key: string]: any } = {};
           const productionQuantiteAggregations: { [key: string]: any } = {};
-          const ipeKgAggregations: { [key: string]: any } = {};
-          const ipeQuantiteAggregations: { [key: string]: any } = {};
+          
+          // Stocker les agrégations pour chaque type d'énergie
+          const ipeKgAggregationsByType: Record<string, Record<string, any>> = {};
+          const ipeQuantiteAggregationsByType: Record<string, Record<string, any>> = {};
+          
+          // Initialiser les objets d'agrégation pour chaque type d'énergie
+          const allEnergyTypes = ['elec', 'gaz', 'eau', 'air'];
+          for (const type of allEnergyTypes) {
+            ipeKgAggregationsByType[type] = {};
+            ipeQuantiteAggregationsByType[type] = {};
+          }
 
           // Agrégations pour les différentes variables
           const timeIntervals = [
@@ -917,21 +1031,36 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               cycle: { base: interval.base, factor: interval.factor }
             };
 
-            // Agrégation IPE (kg)
-            const aggIPEKg = await createAggregation(ipeKgVariable.variableId, 'Sum', interval.base, interval.factor);
-            ipeKgAggregations[interval.name] = {
-              id: aggIPEKg.id,
-              type: 'Sum',
-              cycle: { base: interval.base, factor: interval.factor }
-            };
-
-            // Agrégation IPE (quantité)
-            const aggIPEQuantite = await createAggregation(ipeQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
-            ipeQuantiteAggregations[interval.name] = {
-              id: aggIPEQuantite.id,
-              type: 'Sum',
-              cycle: { base: interval.base, factor: interval.factor }
-            };
+            // Agrégations pour les variables IPE par type d'énergie
+            for (const type of allEnergyTypes) {
+              if (ipeVariables.ipeKgVariables[type] && ipeVariables.ipeQuantiteVariables[type]) {
+                // Agrégation IPE_kg par type d'énergie
+                const aggIPEKg = await createAggregation(
+                  ipeVariables.ipeKgVariables[type].variableId, 
+                  'Sum', 
+                  interval.base, 
+                  interval.factor
+                );
+                ipeKgAggregationsByType[type][interval.name] = {
+                  id: aggIPEKg.id,
+                  type: 'Sum',
+                  cycle: { base: interval.base, factor: interval.factor }
+                };
+                
+                // Agrégation IPE_quantite par type d'énergie
+                const aggIPEQuantite = await createAggregation(
+                  ipeVariables.ipeQuantiteVariables[type].variableId, 
+                  'Sum', 
+                  interval.base, 
+                  interval.factor
+                );
+                ipeQuantiteAggregationsByType[type][interval.name] = {
+                  id: aggIPEQuantite.id,
+                  type: 'Sum',
+                  cycle: { base: interval.base, factor: interval.factor }
+                };
+              }
+            }
           }
 
           // Après la création des variables
@@ -947,11 +1076,12 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
 
           mendixEntities[sanitizedMachineName] = mendixEntity;
 
-          iihStructure.rootMachines[sanitizedMachineName] = {
+          // Base de la structure de machine
+          const machineStructure: IIHMachine = {
             id: machineAsset.id,
             assetId: machineAsset.assetId,
             name: machineAsset.name,
-            type: 'machine',
+            type: 'machine' as const,
             energyType: item.type,
             variable: {
               id: consumptionVariable.variableId,
@@ -968,22 +1098,43 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               name: `Production_quantite_${sanitizedMachineName}`,
               aggregations: productionQuantiteAggregations
             },
-            ipeKgVariable: {
-              id: ipeKgVariable.variableId,
-              name: `IPE_kg_${sanitizedMachineName}`,
-              aggregations: ipeKgAggregations
-            },
-            ipeQuantiteVariable: {
-              id: ipeQuantiteVariable.variableId,
-              name: `IPE_quantite_${sanitizedMachineName}`,
-              aggregations: ipeQuantiteAggregations
-            },
             stateVariable: {
               variableId: stateVariable.variableId,
               name: `EtatCapteur_${sanitizedMachineName}`
             },
             mendixEntity: mendixEntity
           };
+          
+          // Ajouter les variables IPE par type d'énergie
+          for (const type of allEnergyTypes) {
+            if (ipeVariables.ipeKgVariables[type] && ipeVariables.ipeQuantiteVariables[type]) {
+              // Utiliser une assertion de type pour éviter les erreurs de typage pour les propriétés dynamiques
+              (machineStructure as any)[`ipeKgVariable_${type}`] = {
+                id: ipeVariables.ipeKgVariables[type].variableId,
+                name: `IPE_kg_${type}_${sanitizedMachineName}`,
+                aggregations: ipeKgAggregationsByType[type]
+              };
+              
+              (machineStructure as any)[`ipeVariable_${type}`] = {
+                id: ipeVariables.ipeQuantiteVariables[type].variableId,
+                name: `IPE_${type}_${sanitizedMachineName}`,
+                aggregations: ipeQuantiteAggregationsByType[type]
+              };
+            }
+          }
+          
+          // Pour la compatibilité avec l'existant, conserver les propriétés ipeKgVariable et ipeQuantiteVariable
+          // mais les pointer vers les variables du type d'énergie spécifique de la machine
+          if (ipeVariables.ipeKgVariables[energyType]) {
+            (machineStructure as any).ipeKgVariable = (machineStructure as any)[`ipeKgVariable_${energyType}`];
+          }
+          
+          if (ipeVariables.ipeQuantiteVariables[energyType]) {
+            (machineStructure as any).ipeQuantiteVariable = (machineStructure as any)[`ipeVariable_${energyType}`];
+          }
+          
+          iihStructure.rootMachines[sanitizedMachineName] = machineStructure;
+          
           console.log(`Machine racine créée avec variable d'état:`, {
             machineName: sanitizedMachineName,
             stateVariable: {
@@ -1078,7 +1229,12 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               name: item.machine,
               description: `Machine ${item.machine}${item.workshop ? ` de l'atelier ${workshopName}` : ''} du secteur ${item.sector} - Type: ${item.type}`,
               parentId: iihStructure.sectors[sanitizedSectorName].workshops[sanitizedWorkshopName].assetId,
-              type: 'machine'
+              type: 'machine',
+              metadata: {
+                energyType: item.type,  // Ajouter le type d'énergie aux métadonnées
+                sourceSystem: 'excel-import',
+                importDate: new Date().toISOString()
+              }
             });
 
             // Créer la variable de consommation
@@ -1103,12 +1259,10 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
             const productionQuantiteVariable = await createProductionQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
             console.log(`      ✅ Variable de production (quantité) créée avec l'ID: ${productionQuantiteVariable.variableId}`);
 
-            // Variables IPE (kg et quantité)
-            const ipeKgVariable = await createIPEKgVariable(sanitizedMachineName, machineAsset.assetId);
-            console.log(`      ✅ Variable IPE (kg) créée avec l'ID: ${ipeKgVariable.variableId}`);
-
-            const ipeQuantiteVariable = await createIPEQuantiteVariable(sanitizedMachineName, machineAsset.assetId);
-            console.log(`      ✅ Variable IPE (quantité) créée avec l'ID: ${ipeQuantiteVariable.variableId}`);
+            // Variables IPE par type d'énergie
+            const energyType = item.type || 'elec'; // Utiliser le type d'énergie de la machine ou 'elec' par défaut
+            const ipeVariables = await createAllIPEVariablesByEnergyType(sanitizedMachineName, machineAsset.assetId);
+            console.log(`      ✅ Variables IPE créées pour tous les types d'énergie`);
 
             // Variable d'état du capteur
             const stateVariable = await createSensorStateVariable(sanitizedMachineName, machineAsset.assetId);
@@ -1124,8 +1278,17 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
             const aggregations: { [key: string]: any } = {};
             const productionKgAggregations: { [key: string]: any } = {};
             const productionQuantiteAggregations: { [key: string]: any } = {};
-            const ipeKgAggregations: { [key: string]: any } = {};
-            const ipeQuantiteAggregations: { [key: string]: any } = {};
+            
+            // Stocker les agrégations pour chaque type d'énergie
+            const ipeKgAggregationsByType: Record<string, Record<string, any>> = {};
+            const ipeQuantiteAggregationsByType: Record<string, Record<string, any>> = {};
+            
+            // Initialiser les objets d'agrégation pour chaque type d'énergie
+            const allEnergyTypes = ['elec', 'gaz', 'eau', 'air'];
+            for (const type of allEnergyTypes) {
+              ipeKgAggregationsByType[type] = {};
+              ipeQuantiteAggregationsByType[type] = {};
+            }
 
             // Agrégations pour les différentes variables
             const timeIntervals = [
@@ -1161,21 +1324,36 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
                 cycle: { base: interval.base, factor: interval.factor }
               };
 
-              // Agrégation IPE (kg)
-              const aggIPEKg = await createAggregation(ipeKgVariable.variableId, 'Sum', interval.base, interval.factor);
-              ipeKgAggregations[interval.name] = {
-                id: aggIPEKg.id,
-                type: 'Sum',
-                cycle: { base: interval.base, factor: interval.factor }
-              };
-
-              // Agrégation IPE (quantité)
-              const aggIPEQuantite = await createAggregation(ipeQuantiteVariable.variableId, 'Sum', interval.base, interval.factor);
-              ipeQuantiteAggregations[interval.name] = {
-                id: aggIPEQuantite.id,
-                type: 'Sum',
-                cycle: { base: interval.base, factor: interval.factor }
-              };
+              // Agrégations pour les variables IPE par type d'énergie
+              for (const type of allEnergyTypes) {
+                if (ipeVariables.ipeKgVariables[type] && ipeVariables.ipeQuantiteVariables[type]) {
+                  // Agrégation IPE_kg par type d'énergie
+                  const aggIPEKg = await createAggregation(
+                    ipeVariables.ipeKgVariables[type].variableId, 
+                    'Sum', 
+                    interval.base, 
+                    interval.factor
+                  );
+                  ipeKgAggregationsByType[type][interval.name] = {
+                    id: aggIPEKg.id,
+                    type: 'Sum',
+                    cycle: { base: interval.base, factor: interval.factor }
+                  };
+                  
+                  // Agrégation IPE_quantite par type d'énergie
+                  const aggIPEQuantite = await createAggregation(
+                    ipeVariables.ipeQuantiteVariables[type].variableId, 
+                    'Sum', 
+                    interval.base, 
+                    interval.factor
+                  );
+                  ipeQuantiteAggregationsByType[type][interval.name] = {
+                    id: aggIPEQuantite.id,
+                    type: 'Sum',
+                    cycle: { base: interval.base, factor: interval.factor }
+                  };
+                }
+              }
             }
 
             // Après la création des variables
@@ -1195,7 +1373,7 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
               id: machineAsset.id,
               assetId: machineAsset.assetId,
               name: machineAsset.name,
-              type: 'machine',
+              type: 'machine' as const,
               energyType: item.type,
               variable: {
                 id: consumptionVariable.variableId,
@@ -1213,14 +1391,14 @@ export async function importAssetsFromExcel(data: ExcelData[]) {
                 aggregations: productionQuantiteAggregations
               },
               ipeKgVariable: {
-                id: ipeKgVariable.variableId,
-                name: `IPE_kg_${sanitizedMachineName}`,
-                aggregations: ipeKgAggregations
+                id: ipeVariables.ipeKgVariables[energyType].variableId,
+                name: `IPE_kg_${energyType}_${sanitizedMachineName}`,
+                aggregations: ipeKgAggregationsByType[energyType]
               },
               ipeQuantiteVariable: {
-                id: ipeQuantiteVariable.variableId,
-                name: `IPE_quantite_${sanitizedMachineName}`,
-                aggregations: ipeQuantiteAggregations
+                id: ipeVariables.ipeQuantiteVariables[energyType].variableId,
+                name: `IPE_${energyType}_${sanitizedMachineName}`,
+                aggregations: ipeQuantiteAggregationsByType[energyType]
               },
               stateVariable: {
                 variableId: stateVariable.variableId,

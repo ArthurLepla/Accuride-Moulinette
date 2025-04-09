@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
+import { extractRouteParams } from '@/lib/route-helper';
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  // Extraire l'ID de manière sûre
+  const { id } = extractRouteParams(params);
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
   try {
@@ -19,7 +22,8 @@ export async function GET(
     }
 
     const config = JSON.parse(authConfig);
-    const adapterId = params.id;
+    // Utiliser l'ID extrait
+    const adapterId = id;
     
     let baseUrl = config.baseUrl;
     if (!baseUrl.startsWith('https://')) {
