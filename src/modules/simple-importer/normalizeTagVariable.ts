@@ -15,34 +15,41 @@ export function normalizeTagVariable(
 ): IIHVariable {
   console.log(`Normalisation de la variable Tag: ${variable.variableName}`);
   
-  // Utiliser l'adapterId fourni ou celui de la variable
+  // Utiliser l'adapterId fourni ou celui de la variable s'il existe déjà
   const adapterIdToUse = variable.adapterId || adapterId;
   
-  // Valeur par défaut pour connectionName (nom de l'asset si non défini)
-  const connectionName = variable.connectionName || 
+  // Utiliser connectionName s'il existe déjà sur la variable ou dans le tag, sinon le déduire
+  const connectionName = variable.connectionName || variable.tag?.connectionName || 
     sanitizeNameForVariable(variable.variableName);
   
-  // Valeur par défaut pour tagName
-  // Priorité: variable.topic > variableName > tag de consommation configuré
-  const tagName = variable.topic || 
-    variable.variableName || 
-    tagMappings.consumption;
+  // Déterminer le tagName
+  // Priorité : tag existant > topic > variableName > tag par défaut
+  let finalTagName = variable.tag?.tagName; // Priorité 1: Utiliser celui du tag s'il existe
+  if (!finalTagName) {
+    finalTagName = variable.topic || variable.variableName || tagMappings.consumption;
+  }
+  console.log(` - AdapterID: ${adapterIdToUse}, ConnectionName: ${connectionName}, TagName final: ${finalTagName}`);
   
-  // Vérifier si le dataType est valide, utiliser Float par défaut
-  const dataType = variable.dataType === 'String' ? 'String' : 'Float';
+  // Vérifier si le dataType est valide, utiliser Float par défaut (ou celui du tag existant)
+  const dataType = variable.tag?.dataType === 'String' ? 'String' : 
+                   (variable.dataType === 'String' ? 'String' : 'Float');
   
-  // Construction de l'objet tag complet
+  // Construction de l'objet tag complet, en préservant les valeurs existantes si possible
   const normalizedVariable = {
     ...variable,
-    adapterId: adapterIdToUse,
+    adapterId: adapterIdToUse, // Mettre à jour l'adapterId de haut niveau aussi
     sourceType: 'Tag' as const,
     tag: {
       adapterId: adapterIdToUse,
-      connectionName,
-      tagName,
-      dataType
+      connectionName: connectionName,
+      tagName: finalTagName, // Utiliser le tagName déterminé
+      dataType: dataType
     }
   };
+  
+  // Optionnel: Nettoyer les propriétés topic/connectionName de haut niveau si elles sont maintenant dans tag
+  // delete normalizedVariable.topic;
+  // delete normalizedVariable.connectionName;
   
   return normalizedVariable;
 } 

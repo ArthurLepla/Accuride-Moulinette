@@ -1,4 +1,4 @@
-import { AuthConfig, IIHAsset, IIHVariable, BulkCreateVariablesResponse } from '../simple-importer/types';
+import { AuthConfig, IIHAsset, IIHVariable, BulkCreateVariablesResponse, IIHVariableResponse } from '../simple-importer/types';
 import { sanitizeNameForVariable } from '../simple-importer/helpers';
 import https from 'https';
 import nodeFetch, { RequestInit as NodeFetchRequestInit } from 'node-fetch';

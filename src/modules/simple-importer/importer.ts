@@ -1547,11 +1547,16 @@ export class SimpleImporter {
       this.addBasicVariablesForAsset(asset, variables);
       
       // 2. Pour les niveaux 1-4, ajouter/mettre à jour les formules pour les variables de type "rule"
+      // COMMENT OUT: This block is no longer needed as consumption variables are now Tags
+      /*
       if (level < 5) {
         await this.addRuleVariablesForAsset(asset, level, allAssetsByLevel, variables);
       }
+      */
     }
     
+    // COMMENT OUT: This verification is no longer needed for consumption variables
+    /*
     // Vérification des variables de type Rule pour s'assurer qu'elles ont des formules valides
     const ruleVariables = variables.filter(v => v.sourceType === 'Rule');
     console.log(`Vérification de ${ruleVariables.length} variables de type Rule pour le niveau ${level}`);
@@ -1563,6 +1568,7 @@ export class SimpleImporter {
         console.log(`✓ Variable Rule avec formule valide: ${v.variableName}`);
       }
     });
+    */
     
     return variables;
   }
@@ -1643,21 +1649,37 @@ export class SimpleImporter {
       
       // 1. Variables de consommation pour les 4 types d'énergie (Type Rule)
       for (const [type, config] of Object.entries(ENERGY_TYPES)) {
+        // CHANGE: Get specific tag name from configuration, fallback to pattern
+        const mappingKey = `consumption${type.charAt(0).toUpperCase() + type.slice(1)}` as keyof ImportConfiguration['tagMappings'];
+        const specificTagName = this._importConfig.tagMappings[mappingKey];
+        const tagName = specificTagName || `conso_${type}`; // Fallback if specific tag not defined
+        // ADD MORE LOGGING HERE
+        console.log(`[Importer L1-4 Debug] Asset: ${sanitizedAssetName}, Type: ${type}, Key: ${mappingKey}, Config Tag: ${specificTagName}, Final Tag Name: ${tagName}`);
+
         // Les variables de consommation pour les niveaux 1-4 sont des règles qui somment les niveaux inférieurs
         variables.push({
           variableName: `Consommation_${config.name}_${sanitizedAssetName}`,
           dataType: 'Float' as const,
           assetId: assetId,
           unit: config.unit,
-          description: `Consommation de ${config.name} pour ${assetName} (règle d'agrégation)`,
-          sourceType: "Rule",
-          // Formule vide à remplir par addRuleVariablesForAsset
-          formula: "0", // Formule par défaut, sera remplacée par addRuleVariablesForAsset
-          rule: {
-            formula: "0", // Sera mise à jour par la fonction dédiée à la construction des formules
-            tags: []
-          },
-          store: true
+          description: `Consommation de ${config.name} pour ${assetName} (Tag)`, // CHANGE: Updated description
+          sourceType: "Tag", // CHANGE: Set sourceType to Tag
+          store: true,
+          adapterId: this._importConfig.adapterId, // ADD: AdapterId for Tag
+          connectionName: sanitizedAssetName,      // ADD: ConnectionName for Tag
+          // ADD: tag object
+          tag: {
+            adapterId: this._importConfig.adapterId,
+            connectionName: sanitizedAssetName,
+            tagName: tagName, // Use the retrieved or fallback tag name
+            dataType: 'Float'
+          }
+          // REMOVE: Formula and Rule properties
+          // formula: "0", 
+          // rule: {
+          //   formula: "0", 
+          //   tags: []
+          // },
         });
       }
       
@@ -1734,7 +1756,7 @@ export class SimpleImporter {
       });
     }
   }
-
+  
   /**
    * Récupère le type d'énergie d'un asset
    * @param asset Asset à analyser
