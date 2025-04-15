@@ -473,67 +473,113 @@ export default function MendixGeneratorPage() {
     loadEntities();
   }, [router]);
 
+  /**
+   * Propage les types d'énergie (isElec, isGaz, isEau, isAir) du bas vers le haut dans la hiérarchie.
+   * Initialise tous les flags à false, puis pour chaque machine, détecte son type d'énergie et propage les flags à tous ses parents.
+   * Gère les cas multi-parent, logs détaillés, et fallback "Elec" si le type d'énergie est absent.
+   * @param {object} hierarchyData - L'objet contenant nodes, links, levels
+   * @returns {void} (modifie l'objet par référence)
+   */
+  function propagateEnergyTypes(hierarchyData: any) {
+    const t0 = performance.now();
+    if (!hierarchyData || !hierarchyData.nodes || !hierarchyData.links) {
+      console.warn("[propagateEnergyTypes] Données hiérarchiques incomplètes");
+      return;
+    }
+    const { nodes, links, levels } = hierarchyData;
+    const nodeMap = new Map();
+    nodes.forEach((node: any) => {
+      nodeMap.set(node.id, node);
+      if (!node.metadata) node.metadata = {};
+      node.metadata.isElec = false;
+      node.metadata.isGaz = false;
+      node.metadata.isEau = false;
+      node.metadata.isAir = false;
+    });
+    // Déterminer le niveau max (dernier niveau = machines)
+    const maxLevel = levels ? Math.max(...levels.map((l: any) => l.level)) : undefined;
+    // Identifier les machines
+    const machineNodes = nodes.filter((node: any) =>
+      node.metadata?.level === "Machine" ||
+      node.levelName === "Machine" ||
+      (typeof node.level === 'number' && maxLevel !== undefined && node.level === maxLevel)
+    );
+    console.info(`[propagateEnergyTypes] ${machineNodes.length} nœuds Machine détectés (niveau ${maxLevel})`);
+    let missingEnergyType = 0;
+    machineNodes.forEach((node: any) => {
+      let energyType = (node.metadata?.energyType || node.metadata?.rawEnergyType || "Elec").toLowerCase();
+      if (!node.metadata?.energyType && !node.metadata?.rawEnergyType) {
+        missingEnergyType++;
+        console.warn(`[propagateEnergyTypes] Machine ${node.name} sans type d'énergie explicite, fallback 'Elec'`);
+      }
+      // Définir le flag sur la machine
+      if (energyType.includes('elec')) node.metadata.isElec = true;
+      if (energyType.includes('gaz')) node.metadata.isGaz = true;
+      if (energyType.includes('eau')) node.metadata.isEau = true;
+      if (energyType.includes('air')) node.metadata.isAir = true;
+      // Propagation ascendante (multi-parent)
+      let currentNodeIds = [node.id];
+      const visited = new Set();
+      while (currentNodeIds.length > 0) {
+        const nextParents: string[] = [];
+        for (const currentNodeId of currentNodeIds) {
+          if (visited.has(currentNodeId)) continue;
+          visited.add(currentNodeId);
+          const parentLinks = links.filter((link: any) => link.target === currentNodeId);
+          for (const parentLink of parentLinks) {
+            const parentNode = nodeMap.get(parentLink.source);
+            if (!parentNode) continue;
+            // Propager les flags
+            if (node.metadata.isElec) parentNode.metadata.isElec = true;
+            if (node.metadata.isGaz) parentNode.metadata.isGaz = true;
+            if (node.metadata.isEau) parentNode.metadata.isEau = true;
+            if (node.metadata.isAir) parentNode.metadata.isAir = true;
+            nextParents.push(parentNode.id);
+            console.debug(`[propagateEnergyTypes] Propagation de ${node.name} (${energyType}) vers ${parentNode.name}`);
+          }
+        }
+        currentNodeIds = nextParents;
+      }
+    });
+    // Statistiques finales
+    const stats = { total: nodes.length, withElec: 0, withGaz: 0, withEau: 0, withAir: 0 };
+    nodes.forEach((n: any) => {
+      if (n.metadata?.isElec) stats.withElec++;
+      if (n.metadata?.isGaz) stats.withGaz++;
+      if (n.metadata?.isEau) stats.withEau++;
+      if (n.metadata?.isAir) stats.withAir++;
+    });
+    const t1 = performance.now();
+    console.info(`[propagateEnergyTypes] Résumé:`, stats, `| Machines sans type d'énergie: ${missingEnergyType}`);
+    console.info(`[propagateEnergyTypes] Terminé en ${(t1-t0).toFixed(1)} ms`);
+  }
+
   const handleValidateAndGenerate = async () => {
     if (!requiredEntities.length) return;
-
     try {
       setIsValidating(true);
       const iihStructure = localStorage.getItem('iihStructure');
       if (!iihStructure) return;
-
       const data = JSON.parse(iihStructure);
       const hierarchyLevels = data.hierarchyData.levels;
-      
       console.log("[DEBUG] Data from localStorage:", JSON.stringify(data, null, 2));
       console.log("[DEBUG] Hierarchy levels:", JSON.stringify(hierarchyLevels, null, 2));
-
       // Analyser et fixer les données avant de générer le code Mendix
       const fixedData = associateVariablesToNodes(data);
       console.log("[DEBUG] Données après association des variables:", fixedData);
+      // NOUVELLE ÉTAPE: Propagation des types d'énergie
+      propagateEnergyTypes(fixedData.hierarchyData);
 
-      // DEBUG: Analyze nodes for variables
+      // === LOG AJOUTÉ : Vérification des données Machine ===
       if (fixedData.hierarchyData && fixedData.hierarchyData.nodes) {
-        console.log("[DEBUG] Total nodes:", fixedData.hierarchyData.nodes.length);
-        
-        // Check variables in each node
-        const variableCounts = {
-          consoVariables: 0,
-          productionVariables: 0,
-          productionKgVariables: 0,
-          ipeVariables: 0,
-          ipeQuantiteVariables: 0,
-          ipeKgVariables: 0,
-          stateVariables: 0
-        };
-        
-        fixedData.hierarchyData.nodes.forEach((node: any) => {
-          if (node.metadata) {
-            if (node.metadata.variable) variableCounts.consoVariables++;
-            if (node.metadata.productionVariable) variableCounts.productionVariables++;
-            if (node.metadata.productionKgVariable) variableCounts.productionKgVariables++;
-            if (node.metadata.ipeVariable) variableCounts.ipeVariables++;
-            if (node.metadata.ipeQuantiteVariable) variableCounts.ipeQuantiteVariables++;
-            if (node.metadata.ipeKgVariable) variableCounts.ipeKgVariables++;
-            if (node.metadata.stateVariable) variableCounts.stateVariables++;
-          }
-        });
-        
-        console.log("[DEBUG] Variable counts in nodes after fixing:", variableCounts);
-        
-        // Print details of a few nodes as examples
-        console.log("[DEBUG] Sample nodes after fixing (up to 3):");
-        for (let i = 0; i < Math.min(3, fixedData.hierarchyData.nodes.length); i++) {
-          const node = fixedData.hierarchyData.nodes[i];
-          console.log(`[DEBUG] Node ${i+1}:`, {
-            id: node.id,
-            name: node.name,
-            level: node.metadata?.level,
-            hasVariable: !!node.metadata?.variable,
-            hasProductionVariable: !!node.metadata?.productionVariable,
-            hasStateVariable: !!node.metadata?.stateVariable
-          });
+        const machineNodeExample = fixedData.hierarchyData.nodes.find((node: any) => node.metadata?.level === "Machine");
+        if (machineNodeExample) {
+          console.log("[DEBUG PAGE] Données pour un nœud Machine AVANT génération:", JSON.stringify(machineNodeExample.metadata?.variable, null, 2));
+        } else {
+          console.log("[DEBUG PAGE] Aucun nœud Machine trouvé pour vérification.");
         }
       }
+      // ================================================
 
       await validateMendixEntities(requiredEntities);
       const mendixSummary = generateMendixSummary(fixedData);
