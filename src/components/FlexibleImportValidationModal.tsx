@@ -1565,278 +1565,237 @@ export function FlexibleImportValidationModal({
     );
   };
 
-  // Fonction pour structurer les données pour le générateur Mendix
+  // --- AJOUT : Définition de normalizeEnergyType ---
+  // (Copiez/collez ou importez la fonction normalizeEnergyType ici si elle n'est pas déjà accessible)
+  const normalizeEnergyType = (type: string): string => {
+    if (!type) return 'elec'; 
+    const typeLower = type.toLowerCase();
+    if (typeLower === 'eau' || typeLower === 'water' || typeLower.includes('chauff') || typeLower.includes('heat')) return 'eau';
+    if (typeLower === 'gaz' || typeLower === 'gas') return 'gaz';
+    if (typeLower === 'air' || typeLower.includes('compr')) return 'air';
+    if (typeLower === 'elec' || typeLower.includes('élect') || typeLower.includes('electr')) return 'elec';
+    return 'elec'; // Fallback
+  };
+  // --- FIN AJOUT ---
+
   const structureDataForMendix = (hierarchyData: any, assets: any[] = [], variables: any[] = []) => {
     // Copie profonde pour ne pas modifier l'original
     const updatedHierarchyData = JSON.parse(JSON.stringify(hierarchyData));
     
-    console.log("===== DÉBUT STRUCTURATION POUR MENDIX =====");
+    console.log("===== DÉBUT STRUCTURATION POUR MENDIX (Roll-up Dynamique) =====");
     
-    // Afficher les 3 premiers assets pour inspection
-    console.log("Sample de 3 assets:", assets.slice(0, 3).map(a => ({
-      assetId: a.assetId,
-      name: a.name,
-      parentId: a.parentId
-    })));
-    
-    // Afficher les 3 premiers nœuds pour inspection
-    console.log("Sample de 3 nœuds:", updatedHierarchyData.nodes.slice(0, 3).map((n: any) => ({
-      id: n.id,
-      name: n.name,
-      level: n.level,
-      levelName: n.levelName
-    })));
-    
-    // Map pour retrouver facilement les assets par leurs IDs
+    // --- Préparation ---
     const assetMap = assets.reduce((acc: {[key: string]: any}, asset) => {
       acc[asset.assetId] = asset;
       return acc;
     }, {});
-    
-    // SOLUTION POUR LE PROBLÈME DE CORRESPONDANCE: créer un map par nom aussi
     const assetMapByName = assets.reduce((acc: {[key: string]: any}, asset) => {
       acc[asset.name] = asset;
       return acc;
     }, {});
-    
-    console.log(`Assets par ID: ${Object.keys(assetMap).length}, assets par nom: ${Object.keys(assetMapByName).length}`);
-    
-    // Map pour retrouver facilement les variables par les IDs des assets
-    const variablesMap = variables.reduce((acc: {[key: string]: any[]}, variable: IIHVariableResponse) => { // Utiliser le type IIHVariableResponse corrigé
-      const assetId = variable.assetId; // Correction: utiliser assetId directement
+     const variablesMap = variables.reduce((acc: {[key: string]: any[]}, variable: IIHVariableResponse) => { 
+      const assetId = variable.assetId; 
       if (assetId) {
-        if (!acc[assetId]) {
-          acc[assetId] = [];
-        }
+        if (!acc[assetId]) acc[assetId] = [];
         acc[assetId].push(variable);
       } else {
-        // Correction du log pour utiliser variableId et variableName
         console.log(`Variable ${variable.variableId} (${variable.variableName}) n\'a pas d\'assetId`);
       }
       return acc;
     }, {});
-    
-    console.log(`Variables par assetId: ${Object.keys(variablesMap).length} assets avec variables`);
-    
-    // Compteurs pour les diagnostics
-    let nodesWithoutAssets = 0;
-    let nodesWithAssets = 0;
-    let nodesWithVariables = 0;
-    
-    // Parcourir chaque nœud et mettre à jour les métadonnées
+
+    // Maps pour la hiérarchie et la recherche rapide
+    const nodeMapById: { [key: string]: any } = {}; // Pour accéder aux nœuds par leur ID
+    const childrenMap: { [key: string]: string[] } = {}; // Pour stocker les enfants de chaque parent
+    let maxLevel = 0; // Pour stocker le niveau max trouvé
+
+    // --- PASSE 1: Initialisation et traitement de base ---
+    console.log("--- PASSE 1: Initialisation des nœuds ---");
     updatedHierarchyData.nodes.forEach((node: any) => {
-      // Si le nœud n'a pas de metadata, on en crée
-      if (!node.metadata) {
-        node.metadata = { level: node.levelName };
+      // Initialisation de base
+      nodeMapById[node.id] = node; 
+      if (!node.metadata) node.metadata = {};
+      
+      // Utiliser node.level (numérique) s'il existe, sinon essayer de parser levelName
+      let nodeLevelNum = node.level;
+      if (typeof nodeLevelNum !== 'number' && node.levelName) {
+          const match = node.levelName.match(/\d+/);
+          if (match) nodeLevelNum = parseInt(match[0], 10);
       }
-      
-      // S'assurer que le level est bien défini
-      node.metadata.level = node.levelName;
-      
-      // Déterminer le type de nœud basé sur son niveau
-      if (node.levelName === 'Machine') {
-        node.metadata.type = 'machine';
-      } else if (node.levelName === 'Secteur') {
-        node.metadata.type = 'sector';
-      } else if (node.levelName === 'Atelier') {
-        node.metadata.type = 'workshop';
-      } else if (node.levelName === 'Ligne') {
-        node.metadata.type = 'line';
-      } else if (node.levelName === 'Poste') {
-        node.metadata.type = 'station';
+      if(typeof nodeLevelNum !== 'number') {
+          console.warn(`Impossible de déterminer le niveau numérique pour ${node.name}. Assignation 1 par défaut.`);
+          nodeLevelNum = 1; // Fallback
       }
-      
-      // Détecter le type d'énergie à partir du nom du nœud
-      const nodeName = node.name.toLowerCase();
-      if (nodeName.includes('elec')) {
-        node.metadata.rawEnergyType = 'Elec';
-        node.metadata.energyType = 'Elec';
-      } else if (nodeName.includes('gaz')) {
-        node.metadata.rawEnergyType = 'Gaz';
-        node.metadata.energyType = 'Gaz';
-      } else if (nodeName.includes('eau')) {
-        node.metadata.rawEnergyType = 'Eau';
-        node.metadata.energyType = 'Eau';
-      } else if (nodeName.includes('air')) {
-        node.metadata.rawEnergyType = 'Air';
-        node.metadata.energyType = 'Air';
-      }
-      
-      // Chercher l'asset correspondant au nœud - D'ABORD PAR ID
-      let asset = assetMap[node.id];
-      
-      // SI AUCUN ASSET TROUVÉ PAR ID, ESSAYER PAR NOM
-      if (!asset) {
-        asset = assetMapByName[node.name];
-        if (asset) {
-          console.log(`Node ${node.name} (ID: ${node.id}) trouvé par nom plutôt que par ID`);
-        }
-      }
-      
-      if (asset) {
-        nodesWithAssets++;
-        // Ajouter l'ID de l'asset aux métadonnées
-        node.metadata.assetId = asset.assetId;
-        
-        // Chercher les variables associées à cet asset
-        const assetVariables = variablesMap[asset.assetId] || [];
-        
-        if (assetVariables.length > 0) {
-          nodesWithVariables++;
-          console.log(`Node ${node.name} a ${assetVariables.length} variables associées`);
-          
-          // Réinitialiser les indicateurs pour cet asset
-          node.metadata.isElec = false;
-          node.metadata.isGaz = false;
-          node.metadata.isEau = false;
-          node.metadata.isAir = false;
+      node.metadata.levelNum = nodeLevelNum; // Stocker le niveau numérique
+      node.metadata.levelName = node.levelName; // Conserver le nom original
 
-          // Parcourir les variables pour déterminer les flux actifs
-          assetVariables.forEach((variable: IIHVariableResponse) => {
-            let varName = '';
-            if (typeof variable.variableName === 'string') {
-              varName = variable.variableName.toLowerCase();
-            } else {
-              console.warn("Variable sans variableName valide rencontrée:", variable);
-            }
+      // Mettre à jour le niveau max
+      if (nodeLevelNum > maxLevel) {
+          maxLevel = nodeLevelNum;
+      }
 
-            // Version plus flexible pour détecter les variables de consommation
-            const isConsumptionVar = varName.startsWith('consommation_') || varName.startsWith('Consommation_'.toLowerCase());
-            
-            // Stocker la variable dans les métadonnées pour Mendix
-            if (node.levelName === 'Machine') {
-              // Pour les nœuds de niveau 5 (Machine), on stocke la variable de consommation principale
-              if (isConsumptionVar) {
-                if (node.metadata.rawEnergyType === 'Elec' && (varName.includes('elec') || varName.includes('électricité'))) {
-                  node.metadata.variable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] Variable stockée pour ${node.name}: ${variable.variableName} (${variable.variableId})`);
-                } else if (node.metadata.rawEnergyType === 'Gaz' && varName.includes('gaz')) {
-              node.metadata.variable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] Variable stockée pour ${node.name}: ${variable.variableName} (${variable.variableId})`);
-                } else if (node.metadata.rawEnergyType === 'Eau' && varName.includes('eau')) {
-                  node.metadata.variable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] Variable stockée pour ${node.name}: ${variable.variableName} (${variable.variableId})`);
-                } else if (node.metadata.rawEnergyType === 'Air' && varName.includes('air')) {
-                  node.metadata.variable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] Variable stockée pour ${node.name}: ${variable.variableName} (${variable.variableId})`);
-                }
-              }
-              } else {
-              // Pour les nœuds de niveaux 1-4, on stocke les références aux variables par type d'énergie
-              if (isConsumptionVar) {
-                const isActiveRule = variable.sourceType === 'Rule' &&
-                                  ((variable.formula && variable.formula !== '0') ||
-                                    (variable.rule?.tags && variable.rule.tags.length > 0));
+      // Déterminer le type (machine, sector, etc.) - optionnel, basé sur nom si levelName existe
+      if(node.levelName) {
+        if (node.levelName.toLowerCase().includes('machine')) node.metadata.type = 'machine';
+        else if (node.levelName.toLowerCase().includes('secteur')) node.metadata.type = 'sector';
+        else if (node.levelName.toLowerCase().includes('atelier')) node.metadata.type = 'workshop';
+        else if (node.levelName.toLowerCase().includes('ligne')) node.metadata.type = 'line';
+        else if (node.levelName.toLowerCase().includes('poste')) node.metadata.type = 'station';
+      } else {
+         // Si pas de levelName, essayer de deviner type basé sur levelNum
+         if (nodeLevelNum === maxLevel) node.metadata.type = 'machine'; // Dernier niveau = machine
+      }
 
-                // Détection plus souple des types d'énergie et stockage des variables correspondantes
-                if ((varName.includes('elec') || varName.includes('électricité')) && isActiveRule) {
-                  node.metadata.isElec = true;
-                  node.metadata.elecVariable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] ${node.name} marqué comme isElec=true via variable ${variable.variableName} (${variable.variableId})`);
-                }
-                if (varName.includes('gaz') && isActiveRule) {
-                  node.metadata.isGaz = true;
-                  node.metadata.gazVariable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] ${node.name} marqué comme isGaz=true via variable ${variable.variableName} (${variable.variableId})`);
-                }
-                if (varName.includes('eau') && isActiveRule) {
-                  node.metadata.isEau = true;
-                  node.metadata.eauVariable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] ${node.name} marqué comme isEau=true via variable ${variable.variableName} (${variable.variableId})`);
-                }
-                if (varName.includes('air') && isActiveRule) {
-                  node.metadata.isAir = true;
-                  node.metadata.airVariable = {
-                    variableId: variable.variableId,
-                    variableName: variable.variableName,
-                    aggregations: variable.metadata?.aggregations || {}
-                  };
-                  console.log(`[structureData] ${node.name} marqué comme isAir=true via variable ${variable.variableName} (${variable.variableId})`);
-                }
-              }
-            }
-          });
+
+      // Déterminer le type d'énergie basé sur Excel (prioritaire)
+      let determinedEnergyType = 'elec';
+      let rawEnergyType = 'Elec';
+      let sourceLog = 'Default (elec)';
+      if (node.originalData?.type_energie) {
+        const excelValue = node.originalData.type_energie;
+        const normalized = normalizeEnergyType(excelValue);
+        if (['elec', 'gaz', 'eau', 'air'].includes(normalized)) {
+            determinedEnergyType = normalized;
+            rawEnergyType = excelValue; 
+            sourceLog = `Excel ("${excelValue}" -> "${normalized}")`;
         } else {
-          console.log(`Node ${node.name} (ID: ${node.id}) n'a pas de variables associées - Asset: ${asset.assetId}`);
-        }
-        
-        // Assurer que la structure des métadonnées est complète même si certaines données manquent
-        if (node.metadata.level === 'Machine' && !node.metadata.variable) {
-          // Créer une structure vide pour les variables manquantes
-          console.log(`[structureData] Pas de variable trouvée pour ${node.name}, création d'une structure vide`);
-          node.metadata.variable = {
-            variableId: '', 
-            variableName: `Consommation_${node.metadata.energyType || 'Elec'}_${node.name}`,
-            aggregations: {}
-          };
+             sourceLog = `Excel (non reconnu: "${excelValue}") -> Default (elec)`;
         }
       } else {
-        nodesWithoutAssets++;
-        // Si node.id commence par 'l5_', on affiche un message spécifique
-        if (node.id.startsWith('l5_')) {
-          console.log(`⚠️ ATTENTION: Nœud de niveau 5 sans asset correspondant: ${node.name} (ID: ${node.id})`);
-        }
+          // Fallback très simple basé sur nom si pas d'Excel (peu fiable)
+          const nodeNameLower = (node.name || '').toLowerCase();
+          if (nodeNameLower.includes('air')) { determinedEnergyType = 'air'; rawEnergyType = 'Air'; sourceLog="Name analysis (air)";}
+          else if (nodeNameLower.includes('eau')) { determinedEnergyType = 'eau'; rawEnergyType = 'Eau'; sourceLog="Name analysis (eau)";}
+          else if (nodeNameLower.includes('gaz')) { determinedEnergyType = 'gaz'; rawEnergyType = 'Gaz'; sourceLog="Name analysis (gaz)";}
+          else if (nodeNameLower.includes('elec')) { determinedEnergyType = 'elec'; rawEnergyType = 'Elec'; sourceLog="Name analysis (elec)";}
+      }
+      node.metadata.energyType = determinedEnergyType.charAt(0).toUpperCase() + determinedEnergyType.slice(1);
+      node.metadata.rawEnergyType = rawEnergyType;
+      console.log(`[Passe 1] Node: "${node.name}", Level: ${nodeLevelNum}, EnergyType: "${node.metadata.energyType}", Source: ${sourceLog}`);
+
+      // Associer l'assetId IIH
+      let asset = assetMap[node.id] || assetMapByName[node.name];
+      if (asset) {
+        node.metadata.assetId = asset.assetId;
+      } else if (nodeLevelNum === maxLevel) { // Afficher l'alerte seulement pour le dernier niveau
+         console.log(`⚠️ ATTENTION: Nœud du dernier niveau (${maxLevel}) sans asset correspondant: ${node.name} (ID: ${node.id})`);
       }
       
-      // Rechercher et ajouter les informations de parenté
-      const parentLinks = hierarchyData.links.filter((link: any) => link.target === node.id);
-      if (parentLinks.length > 0) {
-        const parentId = parentLinks[0].source;
-        const parentNode = hierarchyData.nodes.find((n: any) => n.id === parentId);
-        
-        if (parentNode) {
-          if (parentNode.levelName === 'Secteur') {
-            node.metadata.parentSector = parentNode.name;
-          } else if (parentNode.levelName === 'Atelier') {
-            node.metadata.parentWorkshop = parentNode.name;
+      // Initialiser les flags à false
+      node.metadata.isElec = false;
+      node.metadata.isGaz = false;
+      node.metadata.isEau = false;
+      node.metadata.isAir = false;
+      // Supprimer les références variables (non nécessaires)
+      delete node.metadata.elecVariable;
+      delete node.metadata.gazVariable;
+      delete node.metadata.eauVariable;
+      delete node.metadata.airVariable;
+      delete node.metadata.variable; 
+
+      // Définir le flag initial pour les machines (dernier niveau) UNIQUEMENT
+      // Utiliser nodeLevelNum ici
+      if (nodeLevelNum === maxLevel) {
+          const mainEnergyType = node.metadata.energyType; // 'Elec', 'Gaz', 'Eau', 'Air'
+          if (mainEnergyType === 'Elec') node.metadata.isElec = true;
+          else if (mainEnergyType === 'Gaz') node.metadata.isGaz = true;
+          else if (mainEnergyType === 'Eau') node.metadata.isEau = true;
+          else if (mainEnergyType === 'Air') node.metadata.isAir = true;
+          console.log(`[Passe 1 L${maxLevel}] Flag initial is${mainEnergyType}=true défini pour ${node.name}`);
+      }
+      
+      // Optionnel: Stocker la variable directe pour Lmax si besoin
+       const assetVariables = asset ? variablesMap[asset.assetId] || [] : [];
+       if (asset && nodeLevelNum === maxLevel && assetVariables.length > 0) {
+           assetVariables.forEach((variable: IIHVariableResponse) => {
+             let varName = (variable.variableName || '').toLowerCase();
+             const isConsumptionVar = varName.startsWith('consommation_') || varName.startsWith('consommation_'.toLowerCase());
+             const isTag = variable.sourceType === 'Tag';
+               if (
+                 isConsumptionVar && isTag &&
+                 (
+                   (node.metadata.energyType === 'Elec' && (varName.includes('_elec_') || varName.includes('electricite'))) ||
+                   (node.metadata.energyType === 'Gaz' && varName.includes('_gaz_')) ||
+                   (node.metadata.energyType === 'Eau' && varName.includes('_eau_')) ||
+                   (node.metadata.energyType === 'Air' && varName.includes('_air_'))
+                 )
+               ) {
+                   node.metadata.variable = { variableId: variable.variableId, variableName: variable.variableName, aggregations: variable.metadata?.aggregations || {} };
+                   console.log(`[Passe 1 L${maxLevel}] Var principale ${variable.variableName} trouvée et stockée pour ${node.name}`);
+               }
+           });
+       }
+
+    }); // Fin de la première passe (forEach node)
+    console.log(`[Passe 1] Niveau maximum détecté: ${maxLevel}`);
+
+    // Construire la map des enfants
+    hierarchyData.links.forEach((link: any) => {
+        const parentId = link.source;
+        const childId = link.target;
+        if (!childrenMap[parentId]) childrenMap[parentId] = [];
+        if (nodeMapById[childId]) childrenMap[parentId].push(childId);
+    });
+    console.log("--- PASSE 1: Map des enfants construite ---");
+
+    // --- PASSE 2: Roll-up des flags ---
+    console.log(`--- PASSE 2: Roll-up des flags (Niveaux ${maxLevel - 1} à 1) ---`);
+    // Itérer des avant-derniers niveaux jusqu'au premier
+    for (let level = maxLevel - 1; level >= 1; level--) {
+        console.log(`[Passe 2] Traitement du niveau: ${level}`);
+        // Filtrer les nœuds de ce niveau (utiliser levelNum)
+        const nodesAtLevel = updatedHierarchyData.nodes.filter((n: any) => n.metadata.levelNum === level);
+
+        nodesAtLevel.forEach((parentNode: any) => {
+            const childIds = childrenMap[parentNode.id] || [];
+            const childrenNodes = childIds.map(id => nodeMapById[id]).filter(Boolean); 
+
+            // Le flag est TRUE si AU MOINS UN enfant a le flag TRUE
+            parentNode.metadata.isElec = childrenNodes.some(child => child.metadata.isElec);
+            parentNode.metadata.isGaz = childrenNodes.some(child => child.metadata.isGaz);
+            parentNode.metadata.isEau = childrenNodes.some(child => child.metadata.isEau);
+            parentNode.metadata.isAir = childrenNodes.some(child => child.metadata.isAir);
+                
+            console.log(`[Passe 2 L${level}] Flags roll-up pour ${parentNode.name}: Elec=${parentNode.metadata.isElec}, Gaz=${parentNode.metadata.isGaz}, Eau=${parentNode.metadata.isEau}, Air=${parentNode.metadata.isAir}`);
             
-            // Chercher aussi le secteur parent de l'atelier
-            const sectorLinks = hierarchyData.links.filter((link: any) => link.target === parentId);
-            if (sectorLinks.length > 0) {
-              const sectorId = sectorLinks[0].source;
-              const sectorNode = hierarchyData.nodes.find((n: any) => n.id === sectorId);
-              
-              if (sectorNode && sectorNode.levelName === 'Secteur') {
-                node.metadata.parentSector = sectorNode.name;
-              }
-            }
+        });
+    }
+    console.log("--- PASSE 2: Roll-up terminé ---");
+    
+    // Ajouter les informations de parenté (peut rester à la fin)
+    updatedHierarchyData.nodes.forEach((node: any) => {
+        const parentLinks = hierarchyData.links.filter((link: any) => link.target === node.id);
+        if (parentLinks.length > 0) {
+          const parentId = parentLinks[0].source;
+          const parentNode = nodeMapById[parentId]; 
+          if (parentNode) {
+             // Tenter de récupérer les noms des parents jusqu'au niveau Secteur
+             let currentParent = parentNode;
+             let hops = 0;
+             while(currentParent && hops < maxLevel) { // Limiter la recherche pour éviter boucle infinie
+                if(currentParent.metadata?.type === 'workshop' || currentParent.levelName?.toLowerCase().includes('atelier')) {
+                    node.metadata.parentWorkshop = currentParent.name;
+                }
+                if(currentParent.metadata?.type === 'sector' || currentParent.levelName?.toLowerCase().includes('secteur')) {
+                    node.metadata.parentSector = currentParent.name;
+                    break; // On a trouvé le secteur, on arrête
+                }
+                 // Remonter au parent suivant
+                 const grandParentLinks = hierarchyData.links.filter((link: any) => link.target === currentParent.id);
+                 if (grandParentLinks.length > 0) {
+                    currentParent = nodeMapById[grandParentLinks[0].source];
+                 } else {
+                    currentParent = null; // Pas de parent plus haut
+                 }
+                 hops++;
+             }
           }
         }
-      }
-    });
-    
-    console.log(`Statistiques: ${nodesWithAssets}/${updatedHierarchyData.nodes.length} nœuds avec assets, ${nodesWithVariables} nœuds avec variables, ${nodesWithoutAssets} nœuds sans assets`);
+     });
+
     console.log("===== FIN STRUCTURATION POUR MENDIX =====");
     
-    console.log('Structure mise à jour avec tous les IDs:', updatedHierarchyData);
+    // console.log('Structure finale avec roll-up:', JSON.stringify(updatedHierarchyData, null, 2)); // Pour débogage détaillé si besoin
     return updatedHierarchyData;
   };
 
