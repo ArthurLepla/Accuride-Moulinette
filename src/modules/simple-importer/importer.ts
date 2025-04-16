@@ -1758,199 +1758,48 @@ export class SimpleImporter {
   }
   
   /**
-   * Récupère le type d'énergie d'un asset
-   * @param asset Asset à analyser
-   * @returns Type d'énergie (clé dans ENERGY_TYPES ou 'défaut')
+   * Récupère le type d'énergie d'un asset EN SE BASANT UNIQUEMENT sur les données originales Excel
+   * @param asset Asset à analyser, doit contenir asset.originalData.type_energie
+   * @returns Type d'énergie normalisé (clé dans ENERGY_TYPES) ou le type par défaut
    */
   private getAssetEnergyType(asset: any): string {
-    console.log(`Détection du type d'énergie pour l'asset "${asset.name}" (ID: ${asset.assetId}):`);
-    
-    // Ajouter un log pour inspecter la structure complète de l'asset
-    console.log(`Structure complète de l'asset pour inspection:`, JSON.stringify(asset, null, 2));
-    
-    // Utiliser d'abord explicitement la colonne "type energie" de l'Excel si elle est passée
-    // Cette méthode est prioritaire sur toutes les autres
+    const assetNameForLog = asset.name || 'Nom Inconnu';
+    const assetIdForLog = asset.assetId || 'ID Inconnu';
+    console.log(`Détection du type d'énergie pour l'asset "${assetNameForLog}" (ID: ${assetIdForLog}) - Méthode stricte (Excel uniquement)`);
+
+    let finalEnergyType: string | null = null;
+    let source = "défaut";
+
+    // 1. Vérifier les données Excel originales (SEULE SOURCE VALIDE)
     if (asset.originalData && asset.originalData.type_energie) {
-      const excelEnergyType = normalizeEnergyType(asset.originalData.type_energie);
-      console.log(`  ✓ Type d'énergie trouvé dans les données Excel originales (type_energie): "${asset.originalData.type_energie}" -> "${excelEnergyType}"`);
-      return excelEnergyType;
-    }
-    
-    // 0. MÉTHODE DIRECTE: Rechercher explicitement la valeur 'Eau' ou 'eau' dans toutes les propriétés de l'asset
-    // Cette méthode prioritaire vise à résoudre les problèmes de détection
-    const assetStr = JSON.stringify(asset).toLowerCase();
-    
-    if (assetStr.includes('"eau"') || assetStr.includes('"water"')) {
-      console.log(`  ✓ Valeur 'eau' trouvée directement dans l'asset - Attribution prioritaire`);
-      return 'eau';
-    }
-    
-    if (assetStr.includes('"gaz"') || assetStr.includes('"gas"')) {
-      console.log(`  ✓ Valeur 'gaz' trouvée directement dans l'asset - Attribution prioritaire`);
-      return 'gaz';
-    }
-    
-    if (assetStr.includes('"air"') || assetStr.includes('"air comprimé"')) {
-      console.log(`  ✓ Valeur 'air' trouvée directement dans l'asset - Attribution prioritaire`);
-      return 'air';
-    }
-    
-    // 1. Vérifier d'abord dans les métadonnées (source la plus fiable)
-    if (asset.metadata) {
-      console.log(`  Métadonnées trouvées:`, JSON.stringify(asset.metadata, null, 2));
+      const excelValue = asset.originalData.type_energie;
+      console.log(`  Valeur trouvée dans originalData.type_energie: "${excelValue}"`);
+      const normalized = normalizeEnergyType(excelValue); // Utilise normalizeEnergyType pour standardiser
       
-      // Vérifier la propriété principale energyType
-      if (asset.metadata.energyType) {
-        const energyType = normalizeEnergyType(asset.metadata.energyType);
-        console.log(`  ✓ Type d'énergie trouvé dans metadata.energyType: "${asset.metadata.energyType}" -> "${energyType}"`);
-        return energyType;
+      // Vérifier si le type normalisé est l'un des types attendus (elec, gaz, eau, air)
+      if (['elec', 'gaz', 'eau', 'air'].includes(normalized)) {
+        finalEnergyType = normalized;
+        source = `Excel ("${excelValue}" -> "${normalized}")`;
+      } else {
+        // Log an error if the value from Excel is present but not recognized
+        console.error(`  ❌ ERREUR: Type d'énergie "${excelValue}" depuis Excel n'est pas reconnu après normalisation ("${normalized}"). Vérifiez la colonne Type Energie dans l'Excel et la fonction normalizeEnergyType.`);
+        // Keep finalEnergyType as null to force fallback to default
       }
-      
-      // Vérifier des variations possibles du nom de la propriété
-      const possibleMetadataKeys = [
-        'energie', 'Energie', 'ENERGIE', 
-        'energy', 'Energy', 'ENERGY',
-        'energy_type', 'energytype', 'energy-type',
-        'typeEnergie', 'type_energie', 'type-energie',
-        'type', 'Type', 'TYPE',
-        'typeenergie', 'TYPEENERGIE', 'type_Energie',
-        'type energie', 'Type Energie', 'TYPE ENERGIE'
-      ];
-      
-      for (const key of possibleMetadataKeys) {
-        if (asset.metadata[key]) {
-          const energyType = normalizeEnergyType(asset.metadata[key]);
-          console.log(`  ✓ Type d'énergie trouvé dans metadata.${key}: "${asset.metadata[key]}" -> "${energyType}"`);
-          return energyType;
-        }
-      }
-      
-      // Rechercher explicitement toutes les propriétés pour trouver celle liée à l'énergie
-      console.log(`  Recherche dans toutes les propriétés des métadonnées:`);
-      for (const key in asset.metadata) {
-        console.log(`    Propriété: ${key} = ${asset.metadata[key]}`);
-        // Vérifier si cette propriété contient le mot "eau" ou "water"
-        if (typeof asset.metadata[key] === 'string') {
-          const valLower = asset.metadata[key].toLowerCase();
-          if (valLower === 'eau' || valLower === 'water') {
-            console.log(`  ✓ Valeur 'eau' trouvée dans metadata.${key}: "${asset.metadata[key]}"`);
-            return 'eau';
-          }
-          if (valLower === 'gaz' || valLower === 'gas') {
-            console.log(`  ✓ Valeur 'gaz' trouvée dans metadata.${key}: "${asset.metadata[key]}"`);
-            return 'gaz';
-          }
-          if (valLower === 'air' || valLower === 'air comprimé') {
-            console.log(`  ✓ Valeur 'air' trouvée dans metadata.${key}: "${asset.metadata[key]}"`);
-            return 'air';
-          }
-          if (valLower === 'elec' || valLower === 'électricité' || valLower === 'electricité') {
-            console.log(`  ✓ Valeur 'elec' trouvée dans metadata.${key}: "${asset.metadata[key]}"`);
-            return 'elec';
-          }
-        }
-        
-        // Rechercher si le nom de la propriété contient des mots liés à l'énergie
-        const keyLower = key.toLowerCase();
-        if (keyLower.includes('energy') || keyLower.includes('energie') || 
-            keyLower.includes('type') || keyLower.includes('fluid') || 
-            keyLower.includes('fluide')) {
-          const energyType = normalizeEnergyType(asset.metadata[key]);
-          console.log(`  ✓ Type d'énergie potentiel trouvé dans metadata.${key}: "${asset.metadata[key]}" -> "${energyType}"`);
-          return energyType;
-        }
-      }
+    } else {
+      console.log(`  Aucune valeur trouvée dans originalData.type_energie.`);
     }
-    
-    // 2. Vérifier explicitement dans le nom de l'asset avec des patterns plus précis
-    const assetName = (asset.name || '').toLowerCase();
-    
-    // Règles spécifiques pour détecter les types d'énergie en fonction du nom
-    // 2.1 Règles de détection pour l'eau, eau chaude et chauffage
-    if (assetName.match(/\beau\b/) || assetName.match(/\bwater\b/)) {
-      console.log(`  ✓ Type d'énergie 'eau' détecté par mot complet dans le nom: "${asset.name}"`);
-      return 'eau';
+
+    // 2. Si aucun type valide n'a été trouvé depuis Excel, utiliser le type par défaut
+    if (!finalEnergyType) {
+      const defaultType = this._importConfig.defaultEnergyType || 'elec'; // Fallback sur 'elec' si default non défini
+      finalEnergyType = defaultType; // Assign default type
+      source = `Défaut (${finalEnergyType})`;
+      // Log a warning when falling back to default
+      console.warn(`  ⚠️ Aucun type d'énergie valide trouvé ou fourni via Excel. Utilisation du type par défaut: ${finalEnergyType}`);
     }
-    
-    if (assetName.includes('_eau_') || assetName.includes('-eau-')) {
-      console.log(`  ✓ Type d'énergie 'eau' détecté par séparateur dans le nom: "${asset.name}"`);
-      return 'eau';
-    }
-    
-    // Chauffage, eau chaude, calorie - indicateurs d'eau chaude
-    if (assetName.includes('calo') || assetName.includes('calor') || 
-        assetName.includes('_ch_') || assetName.match(/\bch\b/) || 
-        assetName.includes('chauff') || assetName.includes('heat')) {
-      console.log(`  ✓ Type d'énergie 'eau' détecté via pattern chauffage/eau chaude dans le nom: "${asset.name}"`);
-      return 'eau';
-    }
-    
-    // 2.2 Règles de détection pour le gaz
-    if (assetName.match(/\bgaz\b/) || assetName.match(/\bgas\b/)) {
-      console.log(`  ✓ Type d'énergie 'gaz' détecté par mot complet dans le nom: "${asset.name}"`);
-      return 'gaz';
-    }
-    
-    if (assetName.includes('_gaz_') || assetName.includes('-gaz-')) {
-      console.log(`  ✓ Type d'énergie 'gaz' détecté par séparateur dans le nom: "${asset.name}"`);
-      return 'gaz';
-    }
-    
-    // 2.3 Règles de détection pour l'air
-    if (assetName.match(/\bair\b/) || assetName.includes('compr')) {
-      console.log(`  ✓ Type d'énergie 'air' détecté par mot complet dans le nom: "${asset.name}"`);
-      return 'air';
-    }
-    
-    if (assetName.includes('_air_') || assetName.includes('-air-')) {
-      console.log(`  ✓ Type d'énergie 'air' détecté par séparateur dans le nom: "${asset.name}"`);
-      return 'air';
-    }
-    
-    // 2.4 Règles de détection pour l'électricité
-    if (assetName.match(/\belec\b/) || assetName.includes('électr')) {
-      console.log(`  ✓ Type d'énergie 'elec' détecté par mot complet dans le nom: "${asset.name}"`);
-      return 'elec';
-    }
-    
-    if (assetName.includes('_elec_') || assetName.includes('-elec-')) {
-      console.log(`  ✓ Type d'énergie 'elec' détecté par séparateur dans le nom: "${asset.name}"`);
-      return 'elec';
-    }
-    
-    // 3. Essayer de détecter le type d'énergie à partir d'inclusion dans le nom (moins précis)
-    if (assetName.includes('eau')) {
-      console.log(`  ✓ Type d'énergie 'eau' détecté par inclusion dans le nom: "${asset.name}"`);
-      return 'eau';
-    }
-    
-    if (assetName.includes('gaz')) {
-      console.log(`  ✓ Type d'énergie 'gaz' détecté par inclusion dans le nom: "${asset.name}"`);
-      return 'gaz';
-    }
-    
-    if (assetName.includes('air')) {
-      console.log(`  ✓ Type d'énergie 'air' détecté par inclusion dans le nom: "${asset.name}"`);
-      return 'air';
-    }
-    
-    if (assetName.includes('elec')) {
-      console.log(`  ✓ Type d'énergie 'elec' détecté par inclusion dans le nom: "${asset.name}"`);
-      return 'elec';
-    }
-    
-    // 4. Utiliser la fonction helper
-    const detectedType = extractEnergyTypeFromAsset(asset);
-    
-    if (detectedType) {
-      console.log(`  ✓ Type d'énergie '${detectedType}' détecté par extractEnergyTypeFromAsset`);
-      return detectedType;
-    }
-    
-    // 5. Utiliser le type par défaut configuré
-    const defaultType = this._importConfig.defaultEnergyType || 'elec';
-    console.log(`  ⚠️ Aucun type d'énergie détecté pour "${asset.name}". Utilisation du type par défaut: ${defaultType}`);
-    return defaultType;
+
+    console.log(`  ✓ Type d'énergie final pour "${assetNameForLog}": "${finalEnergyType}" (Source: ${source})`);
+    return finalEnergyType;
   }
 
   /**
