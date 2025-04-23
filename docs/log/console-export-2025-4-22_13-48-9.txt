@@ -1,0 +1,40 @@
+13:47:22.251 [DEBUG RAW DATA] Contenu de data.variables: 
+[
+  {
+    "variableId": "87980088-3841-4ade-b1b4-2909419ace59",
+    "variableName": "Consommation_électricité_EDF",
+    "dataType": "Float",
+    "assetId": "0bf1eb78-e89c-430a-a9b6-20d09a220633",
+    "aspectId": "",
+    "aspectName": "",
+    "unit": "kWh",
+    "adapterId": "fbf6c60e132745c98e907e7e9db9bbe2",
+    "topic": "EDF::conso::3::5",
+    "store": true,
+    "sourceType": "Tag",
+    "tag": {
+      "adapterId": "fbf6c60e132745c98e907e7e9db9bbe2",
+      "connectionName": "EDF",
+      "tagName": "conso",
+      "dataType": "Float"
+    },
+    "connected": false,
+    "metadata": {
+      "aggregations": {
+        "minute/5": {
+          "id": "bb1b4124-f2b1-4b85-a83c-a6cd2b8c01bb",
+          "type": "Sum",
+          "cycle": {
+            "base": "minute",
+            "factor": 5
+          }
+        },
+        "hour/1": {
+          "id": "4f38ef82-25f3-44b7-8ac3-cf7db65cb6fc",
+          "type": "Sum",
+          "cycle": {
+            "base": "hour",
+            "factor": 1
+          }
+  …
+page.tsx:545:33
