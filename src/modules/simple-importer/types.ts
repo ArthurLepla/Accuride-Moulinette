@@ -30,9 +30,11 @@ export interface ImportConfiguration {
     ipeKgGazTag?: string;     // Tag pour IPE kg gaz
     ipeKgEauTag?: string;     // Tag pour IPE kg eau
     ipeKgAirTag?: string;     // Tag pour IPE kg air
+    ipe?: string;               // <-- AJOUT: Tag IPE générique (pour L5 si activé)
   };
   // Autres configurations potentielles
   defaultEnergyType?: string; // Type d'énergie par défaut si non détecté
+  includeIpeProdOnLastLevel?: boolean; // <-- AJOUT
 }
 
 // Configuration par défaut
@@ -58,9 +60,11 @@ export const DEFAULT_IMPORT_CONFIG: ImportConfiguration = {
     ipeKgElecTag: "IPE_elec_kg",
     ipeKgGazTag: "IPE_gaz_kg",
     ipeKgEauTag: "IPE_eau_kg",
-    ipeKgAirTag: "IPE_air_kg"
+    ipeKgAirTag: "IPE_air_kg",
+    ipe: "ipe", // <-- AJOUT
   },
-  defaultEnergyType: "elec"
+  defaultEnergyType: "elec",
+  includeIpeProdOnLastLevel: false, // <-- AJOUT (désactivé par défaut)
 };
 
 // Types pour les assets

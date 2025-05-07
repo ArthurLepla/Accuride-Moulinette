@@ -54,6 +54,11 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProp
       icon: <Upload className="w-5 h-5" />,
     },
     {
+      title: 'Migration Mendix',
+      href: '/mendix-generator/migrate',
+      icon: <Code2 className="w-5 h-5" />,
+    },
+    {
       title: 'Visualisation',
       href: '/charts',
       icon: <BarChart className="w-5 h-5" />,

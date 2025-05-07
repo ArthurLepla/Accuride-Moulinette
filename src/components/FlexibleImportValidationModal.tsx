@@ -299,6 +299,8 @@ export function FlexibleImportValidationModal({
   const [adapterTags, setAdapterTags] = useState<string[]>([]);
   const [loadingTags, setLoadingTags] = useState(false);
   const [importConfig, setImportConfig] = useState<ImportConfiguration>({...DEFAULT_IMPORT_CONFIG});
+  // AJOUT: État pour la case à cocher IPE/Prod sur L5
+  const [includeIpeProdOnLastLevel, setIncludeIpeProdOnLastLevel] = useState<boolean>(DEFAULT_IMPORT_CONFIG.includeIpeProdOnLastLevel ?? false);
 
   // Fonction pour obtenir la configuration d'authentification
   const getAuthConfig = () => {
@@ -527,6 +529,17 @@ export function FlexibleImportValidationModal({
     }));
   };
 
+  // AJOUT: Gérer le changement de la case à cocher IPE/Prod
+  const handleIncludeIpeProdChange = (checked: boolean) => {
+    setIncludeIpeProdOnLastLevel(checked);
+    // Mettre à jour directement la configuration d'import
+    setImportConfig(prev => ({
+      ...prev,
+      includeIpeProdOnLastLevel: checked
+    }));
+    console.log(`Option IPE/Prod L5 mise à jour: ${checked}`);
+  };
+
   // Passer à l'étape suivante ou terminer avec la configuration choisie
   const handlePassStepWithConfig = () => {
     console.log('Configuration d\'import appliquée:', importConfig);
@@ -575,10 +588,14 @@ export function FlexibleImportValidationModal({
           <h3 className="text-md font-medium text-white">Tags pour les assets de dernier niveau (niveau 5)</h3>
           <div className="bg-gray-800 rounded-lg p-4">
             <div className="space-y-4">
+              {/* MODIFICATION: Description conditionnelle */}
               <p className="text-sm text-gray-400">
-                Définir les noms des tags pour les capteurs au niveau des machines (niveau 5)
+                Définir les noms des tags pour les capteurs au niveau des machines (niveau 5).
+                {includeIpeProdOnLastLevel && (
+                    " Les tags Production et IPE sont aussi utilisés car l'option est activée."
+                )}
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Tag de consommation */}
                 <div className="space-y-1">
@@ -593,7 +610,7 @@ export function FlexibleImportValidationModal({
                     placeholder="conso"
                   />
                 </div>
-                
+
                 {/* Tag d'état du capteur */}
                 <div className="space-y-1">
                   <label className="block text-sm text-gray-400">
@@ -607,12 +624,49 @@ export function FlexibleImportValidationModal({
                     placeholder="etat"
                   />
                 </div>
+
+                {/* AJOUT: Champs conditionnels pour Production et IPE */}
+                {includeIpeProdOnLastLevel && (
+                  <>
+                    {/* Tag de production (pcs) pour L5 */}
+                    <div className="space-y-1">
+                      <label className="block text-sm text-gray-400">
+                        Tag de Production (pièces)
+                      </label>
+                      <input
+                        type="text"
+                        value={importConfig.tagMappings.productionPcs}
+                        onChange={(e) => handleTagMappingChange('productionPcs', e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="prod_quantite"
+                      />
+                       <p className="text-xs text-gray-500">Utilisé pour le niveau 5 car l'option est activée.</p>
+                    </div>
+
+                    {/* Tag IPE (générique) pour L5 */}
+                    <div className="space-y-1">
+                      <label className="block text-sm text-gray-400">
+                        Tag IPE (générique)
+                      </label>
+                      <input
+                        type="text"
+                        value={importConfig.tagMappings.ipe || 'ipe'}
+                        onChange={(e) => handleTagMappingChange('ipe', e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="ipe"
+                      />
+                       <p className="text-xs text-gray-500">Utilisé pour le niveau 5 car l'option est activée.</p>
+                    </div>
+                  </>
+                )}
+                {/* FIN AJOUT */}
               </div>
             </div>
           </div>
         </div>
 
         {/* Mappage des tags pour les assets des niveaux supérieurs (niveaux 1-4) */}
+        {/* NOTE: Les tags productionPcs et les IPE spécifiques restent ici car ils sont *principalement* utilisés pour les niveaux 1-4, même si productionPcs peut aussi être utilisé pour L5 si l'option est cochée. On pourrait ajouter une note ici aussi si nécessaire. */}
         <div className="space-y-2">
           <h3 className="text-md font-medium text-white">Tags pour les assets des niveaux supérieurs (niveaux 1-4)</h3>
           <div className="bg-gray-800 rounded-lg p-4">
@@ -878,6 +932,28 @@ export function FlexibleImportValidationModal({
           </div>
         </div>
         
+        {/* AJOUT: Option IPE et Prod au dernier niveau */}
+        <div className="space-y-2">
+          <h3 className="text-md font-medium text-white">Options supplémentaires</h3>
+          <div className="bg-gray-800 rounded-lg p-4">
+            <div className="flex items-center">
+              <input
+                id="includeIpeProd"
+                type="checkbox"
+                checked={includeIpeProdOnLastLevel}
+                onChange={(e) => handleIncludeIpeProdChange(e.target.checked)}
+                className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-offset-gray-800"
+              />
+              <label htmlFor="includeIpeProd" className="ml-2 block text-sm text-gray-300">
+                Ajouter les variables IPE et Production au dernier niveau (niveau 5)
+              </label>
+            </div>
+             <p className="text-xs text-gray-500 mt-2 pl-6">
+               Si activé, les variables `Production_[NomMachine]` et `IPE_[NomMachine]` seront créées en plus de la consommation et de l'état pour les assets de niveau 5.
+             </p>
+          </div>
+        </div>
+
         {/* Conseils */}
         <div className="bg-blue-900 bg-opacity-30 rounded-lg p-4 border border-blue-700">
           <div className="flex items-start">
@@ -1646,32 +1722,62 @@ export function FlexibleImportValidationModal({
          if (nodeLevelNum === maxLevel) node.metadata.type = 'machine'; // Dernier niveau = machine
       }
 
-
       // Déterminer le type d'énergie basé sur Excel (prioritaire)
       let determinedEnergyType = 'elec';
       let rawEnergyType = 'Elec';
       let sourceLog = 'Default (elec)';
-      if (node.originalData?.type_energie) {
-        const excelValue = node.originalData.type_energie;
-        const normalized = normalizeEnergyType(excelValue);
-        if (['elec', 'gaz', 'eau', 'air'].includes(normalized)) {
-            determinedEnergyType = normalized;
-            rawEnergyType = excelValue; 
-            sourceLog = `Excel ("${excelValue}" -> "${normalized}")`;
-        } else {
-             sourceLog = `Excel (non reconnu: "${excelValue}") -> Default (elec)`;
-        }
-      } else {
-          // Fallback très simple basé sur nom si pas d'Excel (peu fiable)
-          const nodeNameLower = (node.name || '').toLowerCase();
-          if (nodeNameLower.includes('air')) { determinedEnergyType = 'air'; rawEnergyType = 'Air'; sourceLog="Name analysis (air)";}
-          else if (nodeNameLower.includes('eau')) { determinedEnergyType = 'eau'; rawEnergyType = 'Eau'; sourceLog="Name analysis (eau)";}
-          else if (nodeNameLower.includes('gaz')) { determinedEnergyType = 'gaz'; rawEnergyType = 'Gaz'; sourceLog="Name analysis (gaz)";}
-          else if (nodeNameLower.includes('elec')) { determinedEnergyType = 'elec'; rawEnergyType = 'Elec'; sourceLog="Name analysis (elec)";}
+
+      // ÉTAPE 1: Vérifier si les métadonnées pertinentes existent déjà sur le nœud
+      //          (potentiellement définies lors de l'import initial)
+      if (node.metadata.energyType && ['Elec', 'Gaz', 'Eau', 'Air'].includes(node.metadata.energyType)) {
+          determinedEnergyType = node.metadata.energyType.toLowerCase(); // Utiliser la valeur normalisée existante
+          rawEnergyType = node.metadata.rawEnergyType || node.metadata.energyType; // Utiliser la valeur brute si dispo, sinon la normalisée
+          sourceLog = `Existing Metadata (energyType: "${node.metadata.energyType}")`;
+      } else if (node.metadata.rawEnergyType) {
+          // Si seul rawEnergyType existe, le normaliser
+          const normalizedFromRaw = normalizeEnergyType(node.metadata.rawEnergyType);
+          if (['elec', 'gaz', 'eau', 'air'].includes(normalizedFromRaw)) {
+              determinedEnergyType = normalizedFromRaw;
+              rawEnergyType = node.metadata.rawEnergyType;
+              sourceLog = `Existing Metadata (rawEnergyType: "${rawEnergyType}" -> "${determinedEnergyType}")`;
+          } else {
+              // Si rawEnergyType existe mais n'est pas reconnu, on passera à l'étape 2 (Excel)
+              console.warn(`[Passe 1] Node: "${node.name}", Existing rawEnergyType "${node.metadata.rawEnergyType}" non reconnu. Tentative via Excel.`);
+              sourceLog = `Existing Metadata (non reconnu: "${node.metadata.rawEnergyType}") -> Tentative Excel`;
+          }
       }
+
+      // ÉTAPE 2: Si aucune métadonnée valide n'a été trouvée, essayer de lire depuis originalData (Excel)
+      //          (Cette condition est maintenant atteinte SEULEMENT si l'étape 1 n'a pas trouvé de type valide)
+      if (sourceLog.startsWith('Default') || sourceLog.includes('Tentative Excel')) {
+          if (node.originalData?.type_energie) {
+              const excelValue = node.originalData.type_energie;
+              console.log(`[DEBUG Energy Check] Node: ${node.name}, Excel Value Raw: "${excelValue}", Length: ${excelValue?.length}`);
+              const normalized = normalizeEnergyType(excelValue);
+              if (['elec', 'gaz', 'eau', 'air'].includes(normalized)) {
+                  determinedEnergyType = normalized;
+                  rawEnergyType = excelValue;
+                  sourceLog = `Excel ("${excelValue}" -> "${normalized}")`; // Mettre à jour la source
+              } else {
+                  sourceLog = `Excel (non reconnu: "${excelValue}") -> Default (elec)`; // La source reste par défaut si non reconnu
+              }
+          } else {
+              // Si pas de métadonnées ET pas de donnée Excel, utiliser le fallback par nom
+              console.log(`[DEBUG Energy Check] Node: ${node.name}, NO Excel Value found in node.originalData.type_energie`);
+              const nodeNameLower = (node.name || '').toLowerCase();
+              if (nodeNameLower.includes('air')) { determinedEnergyType = 'air'; rawEnergyType = 'Air'; sourceLog="Name analysis (air)";}
+              else if (nodeNameLower.includes('eau')) { determinedEnergyType = 'eau'; rawEnergyType = 'Eau'; sourceLog="Name analysis (eau)";}
+              else if (nodeNameLower.includes('gaz')) { determinedEnergyType = 'gaz'; rawEnergyType = 'Gaz'; sourceLog="Name analysis (gaz)";}
+              else if (nodeNameLower.includes('elec')) { determinedEnergyType = 'elec'; rawEnergyType = 'Elec'; sourceLog="Name analysis (elec)";}
+              // Si rien ne correspond, determinedEnergyType et rawEnergyType restent 'elec'/'Elec' par défaut.
+          }
+      }
+
+      // Assignation finale basée sur la source déterminée
       node.metadata.energyType = determinedEnergyType.charAt(0).toUpperCase() + determinedEnergyType.slice(1);
       node.metadata.rawEnergyType = rawEnergyType;
-      console.log(`[Passe 1] Node: "${node.name}", Level: ${nodeLevelNum}, EnergyType: "${node.metadata.energyType}", Source: ${sourceLog}`);
+      // Log final de la passe 1 pour ce nœud
+      console.log(`[Passe 1] Node: "${node.name}", Level: ${node.metadata.levelNum}, EnergyType: "${node.metadata.energyType}", Raw: "${node.metadata.rawEnergyType}", Source: ${sourceLog}`);
 
       // Associer l'assetId IIH
       let asset = assetMap[node.id] || assetMapByName[node.name];

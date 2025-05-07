@@ -109,25 +109,76 @@ export function generateDynamicMendixCode(
   // Fonction utilitaire pour mettre la première lettre en majuscule
   const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
   
+  // --- NOUVEAU: Déterminer le dernier niveau ---
+  let maxLevelNumber = 0;
+  let maxLevelName = '';
+  if (Array.isArray(hierarchyLevels) && hierarchyLevels.length > 0) {
+      hierarchyLevels.forEach(level => {
+          if (level.level > maxLevelNumber) {
+              maxLevelNumber = level.level;
+              maxLevelName = capitalize(level.name).replace(/\s+/g, ''); // Utiliser le nom capitalisé et sans espace
+          }
+      });
+      console.log(`[codeGenerator] Last level identified: ${maxLevelName} (Number: ${maxLevelNumber})`);
+  } else {
+      console.warn("[codeGenerator] hierarchyLevels is missing or empty. Cannot determine last level.");
+  }
+  // --- FIN NOUVEAU ---
+
   // Générer les noms d'entités dynamiquement
   const allEntityNames = new Set<string>();
-  hierarchyLevels.forEach(level => allEntityNames.add(`Smart.${capitalize(level.name)}`)); // Corrected: Always capitalize
+  hierarchyLevels.forEach(level => allEntityNames.add(`Smart.${capitalize(level.name)}`));
   hierarchyLevels.forEach(level => {
-    const levelName = capitalize(level.name).replace(/\s+/g, ''); // Corrected: Always capitalize and replace spaces
+    const currentLevelNumber = level.level;
+    const levelName = capitalize(level.name).replace(/\s+/g, '');
+    const levelNameLower = level.name.toLowerCase().replace(/\s+/g, ''); // For checking summary keys
+
     allEntityNames.add(`Smart.Aggregation_Conso_${levelName}`);
-    allEntityNames.add(`Smart.Aggregation_Production_quantite_${levelName}`); // Corrected: lowercase 'quantite'
-    allEntityNames.add(`Smart.Aggregation_Production_kg_${levelName}`); // Corrected: lowercase 'kg'
-    allEntityNames.add(`Smart.Aggregation_IPE_quantite_${levelName}`); // Corrected: lowercase 'quantite'
-    allEntityNames.add(`Smart.Aggregation_IPE_kg_${levelName}`); // Corrected: lowercase 'kg'
+
+    // --- MODIFICATION: Logique conditionnelle basée sur maxLevelNumber ---
+    if (currentLevelNumber === maxLevelNumber) {
+        // Pour le DERNIER niveau, vérifier si les données existent dans le summary
+        const prodCollectionKey = `aggregations_production_${levelNameLower}`;
+        if (mendixSummary[prodCollectionKey] && Array.isArray(mendixSummary[prodCollectionKey]) && mendixSummary[prodCollectionKey].length > 0) {
+            allEntityNames.add(`Smart.Aggregation_Production_${capitalize(level.name)}`);
+            console.log(`[codeGenerator] Added LAST LEVEL Prod entity: Smart.Aggregation_Production_${capitalize(level.name)}`);
+        } else {
+             console.log(`[codeGenerator] Skipping LAST LEVEL Prod entity (key: ${prodCollectionKey}, length: ${mendixSummary[prodCollectionKey]?.length ?? 'undefined'})`);
+        }
+
+        const ipeCollectionKey = `aggregations_ipe_${levelNameLower}`;
+        if (mendixSummary[ipeCollectionKey] && Array.isArray(mendixSummary[ipeCollectionKey]) && mendixSummary[ipeCollectionKey].length > 0) {
+            allEntityNames.add(`Smart.Aggregation_IPE_${capitalize(level.name)}`);
+            console.log(`[codeGenerator] Added LAST LEVEL IPE entity: Smart.Aggregation_IPE_${capitalize(level.name)}`);
+        } else {
+            console.log(`[codeGenerator] Skipping LAST LEVEL IPE entity (key: ${ipeCollectionKey}, length: ${mendixSummary[ipeCollectionKey]?.length ?? 'undefined'})`);
+        }
+    } else {
+        // Pour les niveaux INTERMÉDIAIRES, ajouter systématiquement _quantite et _kg
+        allEntityNames.add(`Smart.Aggregation_Production_quantite_${levelName}`);
+        allEntityNames.add(`Smart.Aggregation_Production_kg_${levelName}`);
+        allEntityNames.add(`Smart.Aggregation_IPE_quantite_${levelName}`);
+        allEntityNames.add(`Smart.Aggregation_IPE_kg_${levelName}`);
+        console.log(`[codeGenerator] Added INTERMEDIATE entities for level: ${levelName}`);
+    }
+    // --- FIN MODIFICATION ---
   });
-  allEntityNames.add('Smart.EtatCapteur');
+
+  // Ajouter EtatCapteur seulement s'il y a des données
+  if (mendixSummary.etatCapteurs && Array.isArray(mendixSummary.etatCapteurs) && mendixSummary.etatCapteurs.length > 0) {
+      allEntityNames.add('Smart.EtatCapteur');
+      console.log("[codeGenerator] Added EtatCapteur entity.");
+  } else {
+      console.log("[codeGenerator] Skipping EtatCapteur entity (no data).");
+  }
 
   // Create ENTITIES map for use within the generated code (optional, but can be helpful)
+  console.log("[codeGenerator] Generating ENTITY_MAP from:", Array.from(allEntityNames)); // DEBUG
   const entityDefinitions = Array.from(allEntityNames).map(fullName => {
-      // Generate a readable constant name, trying to match the old pattern but respecting new casing
+      // Générer un nom de constante lisible
       const shortName = fullName.replace('Smart.', '').toUpperCase()
-          .replace(/_QUANTITE/g, '_QTE') // Keep this replacement for short name
-          .replace(/_KG/g, '_KG') // Keep this replacement for short name
+          .replace(/_QUANTITE/g, '_QTE')
+          .replace(/_KG/g, '_KG')
           .replace(/PRODUCTION/g, 'PROD')
           .replace(/AGGREGATION/g, 'AGG');
       return `    ${shortName}: "${fullName}",`;
@@ -147,7 +198,7 @@ export function generateDynamicMendixCode(
     '// BEGIN EXTRA CODE',
     '// Définition du mapping des entités Mendix (pour référence si besoin)',
     'const ENTITIES_MAP = {',
-    entityDefinitions, // Optional: include the map if useful for debugging inside Mendix
+    entityDefinitions, // Inclut maintenant les entités Machine si elles existent
     '};',
     '',
     '// Données pré-traitées à créer',
@@ -249,18 +300,19 @@ export function generateDynamicMendixCode(
     '                     continue;',
     '                }',
     '',
-    '                // Ensure entity name starts with \'Smart.\' - Handle potential variations if needed',
-    '                const entityName = item.entity.startsWith(\'Smart.\') ? item.entity : `Smart.${item.entity}`;',
+    '                // Utiliser directement le nom d\'entité fourni dans l\'item (qui a été corrigé dans page.tsx)',
+    '                const entityName = item.entity; // Ex: Smart.Aggregation_Production_Machine ou Smart.Aggregation_Production_quantite_NiveauX',
     '                const attributes = item.attributes;',
+    '',
+    '                // AJOUT Log pour vérifier le nom d\'entité traité',
+    '                console.log(`[CodeGenerator Loop] Processing item with Entity Name: ${entityName}`);',
     '',
     '                try {',
     '                    await createAndCommitObject(entityName, attributes);',
     '                    createdCount++;',
     '                } catch (creationError) {',
     '                     errorCount++;',
-    '                     // Decide if we should throw or continue',
-    '                     // throw creationError; // Option 1: Stop execution on first error',
-    '                     console.warn(`Continuing creation process despite error for entity \'${entityName}\'.`); // Option 2: Continue on error (defaulting to this)',
+    '                     console.warn(`Continuing creation process despite error for entity \'${entityName}\'.`);',
     '                }',
     '            }',
     '             console.log(`Finished processing summary key: ${summaryKey}`);',
@@ -296,27 +348,57 @@ export function generateDynamicCleanupCode(requiredEntities: RequiredEntity[], h
   // Fonction utilitaire pour mettre la première lettre en majuscule
   const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 
-  // Generate ENTITIES map dynamically based on hierarchyLevels for cleanup targetting
+  // --- NOUVEAU: Déterminer le dernier niveau ---
+  let maxLevelNumber = 0;
+  let maxLevelName = '';
+  if (Array.isArray(hierarchyLevels) && hierarchyLevels.length > 0) {
+      hierarchyLevels.forEach(level => {
+          if (level.level > maxLevelNumber) {
+              maxLevelNumber = level.level;
+              maxLevelName = capitalize(level.name).replace(/\s+/g, ''); // Utiliser le nom capitalisé et sans espace
+          }
+      });
+      console.log(`[codeGenerator Cleanup] Last level identified: ${maxLevelName} (Number: ${maxLevelNumber})`);
+  } else {
+      console.warn("[codeGenerator Cleanup] hierarchyLevels is missing or empty. Cannot determine last level.");
+  }
+  // --- FIN NOUVEAU ---
+
+  // Générer la liste des entités à nettoyer
   const allEntitiesForCleanup = [
-    // Hierarchy levels themselves
+    // Niveaux hiérarchiques de base
     ...hierarchyLevels.map(level => {
-        const levelName = capitalize(level.name); // Corrected: Always capitalize
-        const entityFullName = `Smart.${levelName}`;
+        const levelNameCapitalized = capitalize(level.name);
+        const entityFullName = `Smart.${levelNameCapitalized}`;
         return `    ${level.name.toUpperCase().replace(/\s+/g, '_')}: "${entityFullName}",`;
     }),
-    // All possible aggregation entity patterns based on levels
+    // Agrégations conditionnelles
     ...hierarchyLevels.flatMap(level => {
-        const levelName = capitalize(level.name).replace(/\s+/g, ''); // Corrected: Always capitalize and replace spaces
+        const currentLevelNumber = level.level;
+        const levelName = capitalize(level.name).replace(/\s+/g, '');
         const upperLevelName = level.name.toUpperCase().replace(/\s+/g, '_');
-        return [
-            `    AGGREGATION_CONSO_${upperLevelName}: "Smart.Aggregation_Conso_${levelName}",`, // Corrected: Use consistent dynamic name
-            `    AGGREGATION_PRODUCTION_QUANTITE_${upperLevelName}: "Smart.Aggregation_Production_quantite_${levelName}",`, // Corrected: Use consistent dynamic name
-            `    AGGREGATION_PRODUCTION_KG_${upperLevelName}: "Smart.Aggregation_Production_kg_${levelName}",`, // Corrected: Use consistent dynamic name
-            `    AGGREGATION_IPE_QUANTITE_${upperLevelName}: "Smart.Aggregation_IPE_quantite_${levelName}",`, // Corrected: Use consistent dynamic name
-            `    AGGREGATION_IPE_KG_${upperLevelName}: "Smart.Aggregation_IPE_kg_${levelName}",` // Corrected: Use consistent dynamic name
+        const entities = [
+             `    AGGREGATION_CONSO_${upperLevelName}: "Smart.Aggregation_Conso_${levelName}",`
         ];
+
+        // --- MODIFICATION: Logique conditionnelle basée sur maxLevelNumber ---
+        if (currentLevelNumber === maxLevelNumber) {
+             // Pour le DERNIER niveau
+             entities.push(`    AGGREGATION_PRODUCTION_${upperLevelName}: "Smart.Aggregation_Production_${levelName}",`);
+             entities.push(`    AGGREGATION_IPE_${upperLevelName}: "Smart.Aggregation_IPE_${levelName}",`);
+             console.log(`[codeGenerator Cleanup] Added LAST LEVEL cleanup entities for ${levelName}`);
+        } else {
+             // Pour les niveaux INTERMÉDIAIRES
+             entities.push(`    AGGREGATION_PRODUCTION_QUANTITE_${upperLevelName}: "Smart.Aggregation_Production_quantite_${levelName}",`);
+             entities.push(`    AGGREGATION_PRODUCTION_KG_${upperLevelName}: "Smart.Aggregation_Production_kg_${levelName}",`);
+             entities.push(`    AGGREGATION_IPE_QUANTITE_${upperLevelName}: "Smart.Aggregation_IPE_quantite_${levelName}",`);
+             entities.push(`    AGGREGATION_IPE_KG_${upperLevelName}: "Smart.Aggregation_IPE_kg_${levelName}",`);
+             console.log(`[codeGenerator Cleanup] Added INTERMEDIATE cleanup entities for ${levelName}`);
+        }
+        // --- FIN MODIFICATION ---
+        return entities;
     }),
-    // Include EtatCapteur separately as it's not tied to a specific level in the same way
+    // EtatCapteur (toujours inclus pour le nettoyage, même s'il n'y avait pas de données)
     '    ETAT_CAPTEUR: "Smart.EtatCapteur"'
   ];
 
@@ -334,8 +416,8 @@ export function generateDynamicCleanupCode(requiredEntities: RequiredEntity[], h
     'import { Big } from "big.js";',
     '',
     '// BEGIN EXTRA CODE',
-    'const ENTITIES_TO_CLEAN = {', // Renamed for clarity
-    entityDefinitions,
+    'const ENTITIES_TO_CLEAN = {',
+    entityDefinitions, // Inclut maintenant les entités Machine
     '};',
     '// END EXTRA CODE',
     '',
@@ -384,9 +466,8 @@ export function generateDynamicCleanupCode(requiredEntities: RequiredEntity[], h
     '        console.log("[Cleanup] Entities targeted for deletion:", entitiesToCleanList);',
     '        let cleanupErrors = 0;',
     '',
-    '        // Iterate through the defined entities and delete them',
-    '        // Delete in reverse order of dependency (roughly: aggregations/sensors first, then hierarchy bottom-up)',
-    '        const reversedEntities = entitiesToCleanList.slice().reverse(); // Create a reversed copy',
+    '        // Itérer sur les entités définies et les supprimer',
+    '        const reversedEntities = entitiesToCleanList.slice().reverse();',
     '',
     '        for (const entityName of reversedEntities) {',
     '             try {',

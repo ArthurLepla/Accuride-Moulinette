@@ -56,81 +56,93 @@ export default function MendixGeneratorPage() {
   const [showEntitiesModal, setShowEntitiesModal] = useState(true);
 
   const generateMendixSummary = (iihData: any) => {
-    console.log('[generateMendixSummary] START', JSON.stringify(iihData, null, 2));
+    console.log('[generateMendixSummary] START');
     const tStartSummary = performance.now();
-    
-    // Récupérer les niveaux hiérarchiques à partir des données
+
     const hierarchyLevels = iihData.hierarchyData?.levels || [];
     if (!Array.isArray(hierarchyLevels) || hierarchyLevels.length === 0) {
-        console.error("[generateMendixSummary] Aucun niveau hiérarchique valide trouvé dans iihData.hierarchyData.levels");
-        // Retourner une structure vide ou lancer une erreur ? Pour l'instant, on continue avec une structure vide.
+        console.error("[generateMendixSummary] Aucun niveau hiérarchique valide trouvé.");
+        // Retourner une structure vide ou gérer l'erreur
+        return { totalEntities: {}, /* autres collections vides */ };
     }
     console.log('[generateMendixSummary] Hierarchy Levels:', hierarchyLevels);
-    
-    // === MODIFICATION : Initialisation dynamique de totalEntities ===
+
+    // --- MODIFICATION: Déterminer le nom et le numéro du dernier niveau ---
+    let maxLevelNumber = 0;
+    let maxLevelName = '';
+    hierarchyLevels.forEach((level: { name: string, level: number }) => {
+        if (level.level > maxLevelNumber) {
+            maxLevelNumber = level.level;
+            maxLevelName = level.name; // Conserver la casse originale du nom du dernier niveau
+        }
+    });
+    console.log(`[generateMendixSummary] Dernier niveau détecté: ${maxLevelName} (Numéro: ${maxLevelNumber})`);
+    // --- FIN MODIFICATION ---
+
+    // Initialisation dynamique de totalEntities
     const initialTotalEntities: { [key: string]: number } = {
-        // Garder les compteurs spécifiques aux agrégations et EtatCapteur
         SmartAggregation_Conso: 0,
+        // Compteurs standard pour niveaux 1 à max-1
         SmartAggregation_Production_Quantite: 0,
         SmartAggregation_Production_Kg: 0,
         SmartAggregation_IPE_Quantite: 0,
         SmartAggregation_IPE_Kg: 0,
+        // --- MODIFICATION: Compteurs spécifiques pour le DERNIER niveau ---
+        // Utiliser le nom réel du dernier niveau
+        [`SmartAggregation_Production_${maxLevelName}`]: 0, // Ex: SmartAggregation_Production_Niveau4
+        [`SmartAggregation_IPE_${maxLevelName}`]: 0,      // Ex: SmartAggregation_IPE_Niveau4
+        // --- FIN MODIFICATION ---
         EtatCapteur: 0
     };
     hierarchyLevels.forEach((level: { name: string }) => {
-        // Utiliser le nom de niveau tel qu'il est (respecter la casse, ex: "ETH", "Secteur")
         initialTotalEntities[level.name] = 0;
     });
-    // =============================================================
 
     // Initialisation de base avec totalEntities dynamique
     const summary: MendixEntitySummary = {
-      totalEntities: initialTotalEntities, // Utiliser l'objet dynamique
-      secteurs: [],
-      ateliers: [],
-      lignes: [],
-      postes: [],
-      machines: [],
+      totalEntities: initialTotalEntities,
       etatCapteurs: []
-      // Les autres tableaux (ex: usines, eths) seront créés dynamiquement ci-dessous si nécessaire
+      // Les autres collections (base et agrégations) seront ajoutées dynamiquement
     };
-    console.log('[generateMendixSummary] Initial Summary Structure (with Dynamic totalEntities):', JSON.stringify(summary));
-    
-    // Générer dynamiquement les collections d'agrégation ET les collections de base pour chaque niveau
-    hierarchyLevels.forEach((level: { name: string }) => {
-      // Utiliser le nom de niveau tel qu'il est pour les vérifications,
-      // mais le nom en minuscules pour les clés des tableaux (convention actuelle)
-      const levelNameOriginalCase = level.name;
-      const levelNameLowercase = levelNameOriginalCase.toLowerCase();
-      const baseCollectionName = levelNameLowercase + 's'; // Exemple: "ETH" -> "eths", "Secteur" -> "secteurs"
+    console.log('[generateMendixSummary] Initial Summary Structure:', JSON.stringify(summary));
 
-      // S'assurer que la collection de base existe dans summary (ex: summary.eths, summary.secteurs)
+    // Générer dynamiquement les collections
+    hierarchyLevels.forEach((level: { name: string }) => {
+      const levelNameOriginalCase = level.name;
+      const levelNameLowercase = levelNameOriginalCase.toLowerCase().replace(/\\s+/g, '');
+      const baseCollectionName = levelNameLowercase + 's';
+      const isLastLevel = levelNameOriginalCase === maxLevelName;
+
+      // Collection de base (ex: secteurs, ateliers, niveau4s)
       if (!summary[baseCollectionName]) {
         summary[baseCollectionName] = [];
         console.log(`[generateMendixSummary] Initialized base collection: ${baseCollectionName}`);
       }
 
-      // Créer dynamiquement les collections d'agrégation pour ce niveau (utilise le nom en minuscules)
+      // Collection Conso (pour tous les niveaux)
       summary[`aggregations_conso_${levelNameLowercase}`] = [];
-      summary[`aggregations_production_quantite_${levelNameLowercase}`] = [];
-      summary[`aggregations_production_kg_${levelNameLowercase}`] = [];
-      summary[`aggregations_ipe_quantite_${levelNameLowercase}`] = [];
-      summary[`aggregations_ipe_kg_${levelNameLowercase}`] = [];
-      console.log(`[generateMendixSummary] Initialized aggregation collections for level: ${levelNameLowercase}`);
-    });
 
-    // LOG: Verify that all arrays are initialized correctly
-    // console.log("[generateMendixSummary] Verifying array initialization after dynamic creation:");
-    // Parcourir toutes les propriétés du summary
-    // Object.keys(summary).forEach(key => {
-    //   if (key !== 'totalEntities') {
-    //     console.log(`[generateMendixSummary]   ${key} is ${Array.isArray(summary[key]) ? 'array' : typeof summary[key]}`);
-    //   }
-    // });
+      // --- MODIFICATION: Collections conditionnelles pour Prod/IPE ---
+      if (isLastLevel) {
+          // Pour le dernier niveau, créer les collections simples
+          summary[`aggregations_production_${levelNameLowercase}`] = []; // Ex: aggregations_production_niveau4
+          summary[`aggregations_ipe_${levelNameLowercase}`] = [];      // Ex: aggregations_ipe_niveau4
+          console.log(`[generateMendixSummary] Initialized LAST LEVEL aggregation collections for ${levelNameLowercase}: production, ipe`);
+      } else {
+          // Pour les niveaux intermédiaires, créer les collections qte/kg
+          summary[`aggregations_production_quantite_${levelNameLowercase}`] = [];
+          summary[`aggregations_production_kg_${levelNameLowercase}`] = [];
+          summary[`aggregations_ipe_quantite_${levelNameLowercase}`] = [];
+          summary[`aggregations_ipe_kg_${levelNameLowercase}`] = [];
+           console.log(`[generateMendixSummary] Initialized INTERMEDIATE LEVEL aggregation collections for ${levelNameLowercase}: prod_qte, prod_kg, ipe_qte, ipe_kg`);
+      }
+      // --- FIN MODIFICATION ---
+
+      console.log(`[generateMendixSummary] Initialized collections for level: ${levelNameLowercase}`);
+    });
 
     // Fonction helper pour créer une entrée d'entité
     const createEntityEntry = (entityName: string, name: string, attributes: any): EntityEntry => {
-        // console.log(`[createEntityEntry] Creating entity: Smart.${entityName} for name: ${name}`); // Reduced log verbosity
         return {
             entity: `Smart.${entityName}`,
             attributes: {
@@ -141,20 +153,17 @@ export default function MendixGeneratorPage() {
 
     // Traiter la hiérarchie
     const processNode = (node: any, parentNodes: any[] = []) => {
-      // console.log(`[processNode] Processing node: ${node.name} (ID: ${node.id}, Level: ${node.metadata?.level})`); // Reduced log verbosity
-      const nodeLevel = node.metadata?.level; // Garde la casse originale (ex: "ETH")
-      if (!nodeLevel || !summary.totalEntities.hasOwnProperty(nodeLevel)) { // Vérifie avec la casse originale
-          console.warn(`[processNode] Node ${node.name} has invalid or missing level: ${nodeLevel}. Skipping level count increment.`);
+      const nodeLevel = node.metadata?.level;
+      if (!nodeLevel || !summary.totalEntities.hasOwnProperty(nodeLevel)) {
+          console.warn(`[processNode] Node ${node.name} invalid level: ${nodeLevel}. Skipping count.`);
       } else {
-          summary.totalEntities[nodeLevel]++; // Incrémente avec la casse originale
+          summary.totalEntities[nodeLevel]++;
       }
 
-      // Créer les attributs de base
       const attributes: any = {};
-      // console.log(`[processNode] Initializing attributes for ${node.name}`); // Reduced log verbosity
-      
-      // Attributs différents selon le niveau
-      if (nodeLevel === 'Machine') {
+      const isLastLevelNode = (nodeLevel === maxLevelName); // <- Utiliser maxLevelName
+
+      if (isLastLevelNode) { // Utiliser le flag
         attributes.Identifiant = node.metadata.assetId || node.id;
         attributes.Nom = node.name;
         attributes.IPE = '0';
@@ -164,9 +173,7 @@ export default function MendixGeneratorPage() {
         attributes.isGaz = node.metadata.isGaz ?? false;
         attributes.isEau = node.metadata.isEau ?? false;
         attributes.isAir = node.metadata.isAir ?? false;
-        // console.log(`[processNode] Machine attributes initialized for ${node.name}:`, attributes); // Reduced log verbosity
       } else {
-        // Pour les niveaux autres que Machine
         attributes.Nom = node.name;
         attributes.TotalConso = '0';
         attributes.TotalConsoElec = '0';
@@ -177,7 +184,6 @@ export default function MendixGeneratorPage() {
         attributes.isGaz = node.metadata.isGaz ?? false;
         attributes.isEau = node.metadata.isEau ?? false;
         attributes.isAir = node.metadata.isAir ?? false;
-        // console.log(`[processNode] Non-Machine attributes initialized for ${node.name}:`, attributes); // Reduced log verbosity
       }
 
       // Ajouter les références aux parents
@@ -185,7 +191,6 @@ export default function MendixGeneratorPage() {
         const parentLevelName = parent.metadata?.level;
         if(parentLevelName){
             attributes[parentLevelName] = parent.name;
-            // console.log(`[processNode] Added parent reference: ${parentLevelName}=${parent.name} to ${node.name}`); // Reduced log verbosity
         } else {
             console.warn(`[processNode] Parent node ${parent.name} (ID: ${parent.id}) is missing level information.`);
         }
@@ -193,38 +198,30 @@ export default function MendixGeneratorPage() {
 
       // Ajouter l'entrée au niveau correspondant
       const entityEntry = createEntityEntry(nodeLevel, node.name, attributes);
-      const collectionName = nodeLevel?.toLowerCase() + 's'; // Accède au tableau avec minuscules + 's'
-      
+      const collectionName = nodeLevel?.toLowerCase() + 's';
       if (collectionName && Array.isArray(summary[collectionName])) {
         summary[collectionName].push(entityEntry);
-        // console.log(`[processNode] Added entity entry for ${node.name} to collection '${collectionName}'.`); // Reduced log verbosity
       } else {
-        console.warn(`[processNode] Could not add entity entry for ${node.name}. Invalid or non-array collection: '${collectionName}'. Summary keys:`, Object.keys(summary));
+        console.warn(`[processNode] Could not add to collection: '${collectionName}'.`);
       }
 
-      // Traiter les variables
-      // console.log(`[processNode] Calling processVariables for node: ${node.name}`); // Reduced log verbosity
-      processVariables(node, summary, parentNodes);
-      // console.log(`[processNode] Finished processing node: ${node.name}`); // Reduced log verbosity
+      // Traiter les variables en passant le nom du dernier niveau
+      processVariables(node, summary, parentNodes, maxLevelName); // <- Passer maxLevelName
     };
 
     // Parcourir la hiérarchie et traiter chaque nœud
     const processHierarchy = (nodes: any[], links: any[]) => {
-        // console.log(`[processHierarchy] Starting processing for ${nodes.length} nodes and ${links.length} links.`); // Reduced log verbosity
         nodes.forEach((node, index) => {
-            // console.log(`[processHierarchy] Finding parents for node ${index + 1}/${nodes.length}: ${node.name} (ID: ${node.id})`); // Reduced log verbosity
             const parents = findAllParents(node.id, nodes, links);
-            // console.log(`[processHierarchy] Found ${parents.length} parents for ${node.name}:`, parents.map(p => ({name: p.name, level: p.metadata?.level}))); // Reduced log verbosity
             processNode(node, parents);
         });
-        // console.log(`[processHierarchy] Finished processing all nodes.`); // Reduced log verbosity
     };
 
     // Traiter la hiérarchie complète
     if (iihData.hierarchyData?.nodes && iihData.hierarchyData?.links) {
       processHierarchy(iihData.hierarchyData.nodes, iihData.hierarchyData.links);
     } else {
-      console.warn("[generateMendixSummary] Missing nodes or links in hierarchyData. Skipping hierarchy processing.");
+      console.warn("[generateMendixSummary] Missing nodes or links.");
     }
 
     const tEndSummary = performance.now();
@@ -243,7 +240,6 @@ export default function MendixGeneratorPage() {
   };
 
   const findAllParents = (nodeId: string, nodes: any[], links: any[]) => {
-    // console.log(`[findAllParents] Searching parents for nodeId: ${nodeId}`); // Reduced log verbosity
     const parents = [];
     let currentId = nodeId;
     let depth = 0; // Safety break
@@ -252,46 +248,39 @@ export default function MendixGeneratorPage() {
       depth++;
       const parentLink = links.find(link => link.target === currentId); // Reverted change: Use currentId
       if (!parentLink) {
-        // console.log(`[findAllParents] No more parent links found for ${currentId}.`); // Reduced log verbosity
         break;
       }
-      // console.log(`[findAllParents] Found link: ${parentLink.source} -> ${parentLink.target}`); // Reduced log verbosity
 
       const parentNode = nodes.find(node => node.id === parentLink.source);
       if (!parentNode) {
         console.warn(`[findAllParents] Parent node with ID ${parentLink.source} not found in nodes array.`);
         break; // Stop if parent node doesn't exist
       }
-      // console.log(`[findAllParents] Found parent node: ${parentNode.name} (ID: ${parentNode.id})`); // Reduced log verbosity
 
       parents.push(parentNode);
       currentId = parentNode.id;
     }
     if(depth >= 10) console.warn(`[findAllParents] Reached max depth limit for nodeId ${nodeId}`);
 
-    // console.log(`[findAllParents] Found ${parents.length} parents for ${nodeId}.`); // Reduced log verbosity
     return parents.reverse(); // Return in top-down order
   };
 
-  const processVariables = (node: any, summary: MendixEntitySummary, parentNodes: any[]) => {
-    // console.log(`[processVariables] START processing variables for node: ${node.name} (ID: ${node.id})`); // Reduced log verbosity
+  const processVariables = (node: any, summary: MendixEntitySummary, parentNodes: any[], maxLevelName: string) => {
     const tStartProcessVars = performance.now();
 
-    // Normalisation du nom de niveau pour éviter les problèmes de casse
-    const rawLevel = node.metadata?.level;
+    const rawLevel = node.metadata?.level; // Nom original du niveau (ex: "Niveau4")
     if (!rawLevel) {
-        console.warn(`[processVariables] Node ${node.name} (ID: ${node.id}) has no level defined in metadata. Skipping variable processing.`);
+        console.warn(`[processVariables] Node ${node.name} (ID: ${node.id}) has no level. Skipping.`);
         return;
     }
-    const level = rawLevel.toLowerCase();
-    // console.log(`[processVariables] Node: ${node.name}, Raw Level: ${rawLevel}, Lowercase Level: ${level}`); // Reduced log verbosity
-    
-    // Vérifier si le nœud a un niveau reconnu (check if rawLevel exists as a key in totalEntities)
+    const level = rawLevel.toLowerCase().replace(/\\s+/g, ''); // Nom en minuscules SANS ESPACE pour les clés (ex: "niveau4")
+    const isLastLevel = (rawLevel === maxLevelName); // Comparer avec le nom du dernier niveau
+
     if (!summary.totalEntities.hasOwnProperty(rawLevel)) {
-      console.warn(`[processVariables] Node ${node.name} has unrecognized level '${rawLevel}'. Skipping.`);
+      console.warn(`[processVariables] Node ${node.name} unrecognized level '${rawLevel}'. Skipping.`);
       return;
     }
-    
+
     // Créer dynamiquement les collections si elles n'existent pas (should already be done, but safe check)
     const aggregationTypes = [
       'aggregations_conso',
@@ -315,46 +304,32 @@ export default function MendixGeneratorPage() {
       const parentLevelName = parent.metadata?.level;
       if (parentLevelName) {
           parentInfo[parentLevelName] = parent.name;
-          // Pas besoin de capitaliser, on utilise le nom exact du niveau
-          // const parentLevelCapitalized = parentLevel.charAt(0).toUpperCase() + parentLevel.slice(1);
-          // parentInfo[parentLevelCapitalized] = parent.name;
       } else {
           console.warn(`[processVariables] Parent node ${parent.name} (ID: ${parent.id}) for node ${node.name} is missing level information.`);
       }
     });
     
-    // DEBUG: Log parent info
-    // console.log(`[processVariables] Parent info for ${node.name}:`, parentInfo); // Reduced log verbosity
-    
     // Fonction d'aide pour préparer les attributs communs
     const prepareCommonAttributes = (variableName: string, variableId: string) => {
-      // console.log(`[prepareCommonAttributes] Preparing attributes for VarName: ${variableName}, VarID: ${variableId}, Node: ${node.name}`); // Reduced log verbosity
       const attrs: any = {
         VariableId: variableId,
         VariableName: variableName,
         AssetName: node.name,
         TypeEnergie: node.metadata?.energyType || node.metadata?.rawEnergyType || "Elec" // Safe access
       };
-      // console.log(`[prepareCommonAttributes] Initial common attributes:`, attrs); // Reduced log verbosity
       
-      // Ajouter la référence au niveau courant
       attrs[rawLevel] = node.name; // Use the original case level name
-      // console.log(`[prepareCommonAttributes] Added current level ref: ${rawLevel}=${node.name}`); // Reduced log verbosity
       
-      // Ajouter les références aux parents
       for (const [parentLevel, parentName] of Object.entries(parentInfo)) {
         attrs[parentLevel] = parentName; // Use the original case level name from parentInfo keys
-        // console.log(`[prepareCommonAttributes] Added parent ref: ${parentLevel}=${parentName}`); // Reduced log verbosity
       }
       
-      // console.log(`[prepareCommonAttributes] Final common attributes for ${variableName}:`, attrs); // Reduced log verbosity
       return attrs;
     };
     
     // Fonction d'aide pour ajouter à une collection
     const addToCollection = (collectionName: string, entityName: string, attributes: any) => {
       console.log(`[addToCollection] Attempting to add to collection: ${collectionName}, Entity: ${entityName}`); // AJOUT DEBUG
-      // console.log(`[addToCollection] Attempting to add to collection: ${collectionName}, Entity: ${entityName}`); // Reduced log verbosity
       if (!summary[collectionName]) {
         summary[collectionName] = [];
         console.warn(`[addToCollection] Created missing collection ${collectionName} on the fly.`);
@@ -364,248 +339,167 @@ export default function MendixGeneratorPage() {
       if (collectionName.includes('production') || collectionName.includes('ipe')) {
         console.log(`[addToCollection] -> Preparing to PUSH Prod/IPE data to ${collectionName}:`, { entity: entityName, attributes });
       }
-      // FIN AJOUT DEBUG
       
-      // console.log(`[addToCollection] Attributes being added:`, JSON.stringify(attributes)); // Replaced by targeted log in processVariables
       summary[collectionName].push({
         entity: entityName,
         attributes: attributes
       });
       
-      // Targeted Log on Success
       if (collectionName === 'aggregations_conso_secteur' || collectionName === 'aggregations_conso_atelier' || collectionName === 'aggregations_conso_machine') {
           console.log(`[addToCollection] Added entity '${entityName}' to collection '${collectionName}' (size: ${summary[collectionName].length})`);
       }
-      // console.log(`[addToCollection] Successfully added to ${collectionName} for node ${node.name}. Current collection size: ${summary[collectionName].length}`); // Reduced log verbosity
     };
     
-    // 1. Traiter LES variables de consommation
-    const consoVars = node.metadata?.consumptionVariables; // Lire le tableau
+    console.log(`[processVariables] Processing node: ${node.name} (Level: ${rawLevel}, IsLast: ${isLastLevel})`);
 
-    if (Array.isArray(consoVars) && consoVars.length > 0) { // Vérifier si c'est un tableau non vide
-        consoVars.forEach((consoVar: any) => { // Itérer sur chaque variable de consommation trouvée
-            if (consoVar && consoVar.id && consoVar.name) { // Vérifier chaque variable individuellement
+    // 1. Traiter TOUTES les variables de consommation
+    const consoVars = node.metadata?.consumptionVariables;
+    if (Array.isArray(consoVars) && consoVars.length > 0) {
+        consoVars.forEach((consoVar: any) => {
+            if (consoVar && consoVar.id && consoVar.name) {
                 console.log(`[processVariables] Found consumption variable for ${node.name}: ID=${consoVar.id}, Name=${consoVar.name}, Type=${consoVar.type}`); // Log le type
                 if (!summary.totalEntities.SmartAggregation_Conso) summary.totalEntities.SmartAggregation_Conso = 0;
                 summary.totalEntities.SmartAggregation_Conso++;
 
-                // Utiliser le nom et l'ID de la variable courante
                 const aggConsoAttributes = prepareCommonAttributes(consoVar.name, consoVar.id);
-
-                // === MODIFICATION : Surcharger TypeEnergie avec celui de la variable ===
-                aggConsoAttributes.TypeEnergie = consoVar.type || 'Unknown'; // Utilise le type stocké lors de l'association
-                // =====================================================================
-
-                console.log(`[processVariables] IMMEDIATELY AFTER prepareCommonAttributes for ${node.name} (Overriding TypeEnergie with ${aggConsoAttributes.TypeEnergie}): VarID='${aggConsoAttributes.VariableId}', VarName='${aggConsoAttributes.VariableName}'`); // Log la valeur surchargée
-
-                if (consoVar.aggregations && typeof consoVar.aggregations === 'object') {
-                    const aggs = consoVar.aggregations;
-                    if (aggs['5min']?.id) aggConsoAttributes.Identifiant5Min = aggs['5min'].id;
-                    if (aggs['1h']?.id) aggConsoAttributes.Identifiant1h = aggs['1h'].id;
-                    if (aggs['4h']?.id) aggConsoAttributes.Identifiant4h = aggs['4h'].id;
-                    if (aggs['8h']?.id) aggConsoAttributes.Identifiant8h = aggs['8h'].id;
-                    if (aggs['1d']?.id) aggConsoAttributes.Identifiant1day = aggs['1d'].id;
-                }
-
-                const collectionName = `aggregations_conso_${level}`; // Correction: Utiliser levelLowercase (variable déjà définie)
-                const entityName = `Smart.Aggregation_Conso_${rawLevel}`; // Correction: Utiliser nodeLevel (variable déjà définie)
-                console.log(`[processVariables] Preparing to add to '${collectionName}': Entity='${entityName}', VarID='${aggConsoAttributes.VariableId}', VarName='${aggConsoAttributes.VariableName}', TypeEnergie='${aggConsoAttributes.TypeEnergie}'`); // Logguer le type d'énergie final
+                aggConsoAttributes.TypeEnergie = consoVar.type || 'Unknown';
+                 if (consoVar.aggregations && typeof consoVar.aggregations === 'object') {
+                     const aggs = consoVar.aggregations;
+                     if (aggs['5min']?.id) aggConsoAttributes.Identifiant5Min = aggs['5min'].id;
+                     if (aggs['1h']?.id) aggConsoAttributes.Identifiant1h = aggs['1h'].id;
+                     if (aggs['4h']?.id) aggConsoAttributes.Identifiant4h = aggs['4h'].id;
+                     if (aggs['8h']?.id) aggConsoAttributes.Identifiant8h = aggs['8h'].id;
+                     if (aggs['1d']?.id) aggConsoAttributes.Identifiant1day = aggs['1d'].id;
+                 }
+                const collectionName = `aggregations_conso_${level}`;
+                const entityName = `Smart.Aggregation_Conso_${rawLevel}`;
                 addToCollection(collectionName, entityName, aggConsoAttributes);
-            } else {
-              // Le warning existant pour le check raté peut rester ici, il s'appliquera si une variable dans le tableau est invalide
-              console.warn(`[processVariables] Skipping one consumption variable processing for node ${node.name} (Level: ${rawLevel}). Reason: Check 'consoVar && consoVar.id && consoVar.name' failed for this item.`, { consoVarExists: !!consoVar, idExists: !!consoVar?.id, nameExists: !!consoVar?.name });
             }
-        }); // Fin de la boucle forEach sur consoVars
+        });
     } else {
-      // Ce cas se produit si aucune variable de consommation n'a été trouvée pour le nœud
-      console.log(`[processVariables] No consumption variables found in metadata for node ${node.name} (Level: ${rawLevel}).`);
+        console.log(`[processVariables] No consumption variables found for ${node.name}.`);
     }
 
-    // Ne traiter les variables de production et IPE que pour les niveaux autres que Machine
-    if (level !== 'machine') {
-      console.log(`[processVariables] Node ${node.name} (Level: ${level}) is NOT a Machine. Processing Prod/IPE variables.`); // AJOUT LOG
-      // console.log(`[processVariables] Node ${node.name} is not a Machine, processing Prod/IPE variables.`); // Reduced log verbosity
-      // 2. Traiter la variable de production (quantité)
-      const prodVar = node.metadata?.productionVariable;
-      // === AJOUT LOG: Vérifier si prodVar existe ===
-      console.log(`[processVariables] Checking prodVar for ${node.name}:`, prodVar ? `Found (ID: ${prodVar.id}, Name: ${prodVar.name})` : 'Not Found');
-      // =========================================
+    // 2. Traiter toutes les variables de production (logique conditionnelle basée sur isLastLevel)
+    const prodVars = node.metadata?.productionVariables || [];
+    prodVars.forEach((prodVar: any) => {
       if (prodVar && prodVar.id && prodVar.name) {
-        console.log(`[processVariables] Found production quantity variable for ${node.name}: ID=${prodVar.id}, Name=${prodVar.name}`);
-        if (!summary.totalEntities.SmartAggregation_Production_Quantite) summary.totalEntities.SmartAggregation_Production_Quantite = 0;
-        summary.totalEntities.SmartAggregation_Production_Quantite++;
-        
         const aggProdAttributes = prepareCommonAttributes(prodVar.name, prodVar.id);
-        
         if (prodVar.aggregations && typeof prodVar.aggregations === 'object') {
-            // console.log(`[processVariables] Found prod quantity aggregations for ${node.name}:`, prodVar.aggregations); // Reduced log verbosity
-            const aggs = prodVar.aggregations;
-            if (aggs['5min']?.id) aggProdAttributes.Identifiant5Min = aggs['5min'].id;
-            if (aggs['1h']?.id) aggProdAttributes.Identifiant1h = aggs['1h'].id;
-            if (aggs['4h']?.id) aggProdAttributes.Identifiant4h = aggs['4h'].id;
-            if (aggs['8h']?.id) aggProdAttributes.Identifiant8h = aggs['8h'].id;
-            if (aggs['1d']?.id) aggProdAttributes.Identifiant1day = aggs['1d'].id;
-             // console.log(`[processVariables] Prod quantity Aggregation IDs added:`, aggProdAttributes); // Reduced log verbosity
+          const aggs = prodVar.aggregations;
+          if (aggs['5min']?.id) aggProdAttributes.Identifiant5Min = aggs['5min'].id;
+          if (aggs['1h']?.id) aggProdAttributes.Identifiant1h = aggs['1h'].id;
+          if (aggs['4h']?.id) aggProdAttributes.Identifiant4h = aggs['4h'].id;
+          if (aggs['8h']?.id) aggProdAttributes.Identifiant8h = aggs['8h'].id;
+          if (aggs['1d']?.id) aggProdAttributes.Identifiant1day = aggs['1d'].id;
         }
-        // else {
-        //      console.log(`[processVariables] No valid prod quantity aggregations found.`); // Reduced log verbosity
-        // }
-        
-        const collectionName = `aggregations_production_quantite_${level}`;
-        const entityName = `Smart.Aggregation_Production_quantite_${rawLevel}`; // Corrected: lowercase 'quantite'
-        // Targeted log BEFORE adding
-        console.log(`[processVariables] Preparing to add to '${collectionName}': Entity='${entityName}', VarID='${aggProdAttributes.VariableId}', VarName='${aggProdAttributes.VariableName}'`);
-        addToCollection(collectionName, entityName, aggProdAttributes);
+        if (isLastLevel) {
+          const entityCounterName = `SmartAggregation_Production_${rawLevel}`;
+          if (!summary.totalEntities[entityCounterName]) summary.totalEntities[entityCounterName] = 0;
+          summary.totalEntities[entityCounterName]++;
+          const collectionName = `aggregations_production_${level}`;
+          const entityName = `Smart.Aggregation_Production_${rawLevel}`;
+          addToCollection(collectionName, entityName, aggProdAttributes);
+        } else {
+          if (!summary.totalEntities.SmartAggregation_Production_Quantite) summary.totalEntities.SmartAggregation_Production_Quantite = 0;
+          summary.totalEntities.SmartAggregation_Production_Quantite++;
+          const collectionName = `aggregations_production_quantite_${level}`;
+          const entityName = `Smart.Aggregation_Production_quantite_${rawLevel}`;
+          addToCollection(collectionName, entityName, aggProdAttributes);
+        }
       }
-      // else {
-        // console.log(`[processVariables] No production quantity variable found for ${node.name}`); // Reduced log verbosity
-      // }
-      
-      // 3. Traiter la variable de production (kg)
-      const prodKgVar = node.metadata?.productionKgVariable;
-      // === AJOUT LOG: Vérifier si prodKgVar existe ===
-      console.log(`[processVariables] Checking prodKgVar for ${node.name}:`, prodKgVar ? `Found (ID: ${prodKgVar.id}, Name: ${prodKgVar.name})` : 'Not Found');
-      // ===========================================
-      if (prodKgVar && prodKgVar.id && prodKgVar.name) {
-         console.log(`[processVariables] Found production kg variable for ${node.name}: ID=${prodKgVar.id}, Name=${prodKgVar.name}`);
-         if (!summary.totalEntities.SmartAggregation_Production_Kg) summary.totalEntities.SmartAggregation_Production_Kg = 0;
-         summary.totalEntities.SmartAggregation_Production_Kg++;
-        
-        const aggProdKgAttributes = prepareCommonAttributes(prodKgVar.name, prodKgVar.id);
-        
-        if (prodKgVar.aggregations && typeof prodKgVar.aggregations === 'object') {
-            // console.log(`[processVariables] Found prod kg aggregations for ${node.name}:`, prodKgVar.aggregations); // Reduced log verbosity
+    });
+
+    // 3. Traiter toutes les variables de production KG (uniquement Niveaux INTERMEDIAIRES)
+    const prodKgVars = node.metadata?.productionKgVariables || [];
+    if (!isLastLevel) {
+      prodKgVars.forEach((prodKgVar: any) => {
+        if (prodKgVar && prodKgVar.id && prodKgVar.name) {
+          const aggProdKgAttributes = prepareCommonAttributes(prodKgVar.name, prodKgVar.id);
+          if (prodKgVar.aggregations && typeof prodKgVar.aggregations === 'object') {
             const aggs = prodKgVar.aggregations;
             if (aggs['5min']?.id) aggProdKgAttributes.Identifiant5Min = aggs['5min'].id;
             if (aggs['1h']?.id) aggProdKgAttributes.Identifiant1h = aggs['1h'].id;
             if (aggs['4h']?.id) aggProdKgAttributes.Identifiant4h = aggs['4h'].id;
             if (aggs['8h']?.id) aggProdKgAttributes.Identifiant8h = aggs['8h'].id;
             if (aggs['1d']?.id) aggProdKgAttributes.Identifiant1day = aggs['1d'].id;
-            // console.log(`[processVariables] Prod kg Aggregation IDs added:`, aggProdKgAttributes); // Reduced log verbosity
+          }
+          const collectionName = `aggregations_production_kg_${level}`;
+          const entityName = `Smart.Aggregation_Production_kg_${rawLevel}`;
+          addToCollection(collectionName, entityName, aggProdKgAttributes);
         }
-        // else {
-        //     console.log(`[processVariables] No valid prod kg aggregations found.`); // Reduced log verbosity
-        // }
-        
-        const collectionName = `aggregations_production_kg_${level}`;
-        const entityName = `Smart.Aggregation_Production_kg_${rawLevel}`; // Corrected: lowercase 'kg'
-        // Targeted log BEFORE adding
-        console.log(`[processVariables] Preparing to add to '${collectionName}': Entity='${entityName}', VarID='${aggProdKgAttributes.VariableId}', VarName='${aggProdKgAttributes.VariableName}'`);
-        addToCollection(collectionName, entityName, aggProdKgAttributes);
-      }
-      // else {
-        // console.log(`[processVariables] No production kg variable found for ${node.name}`); // Reduced log verbosity
-      // }
-      
-      // 4. Traiter la variable IPE (quantité)
-      const ipeVar = node.metadata?.ipeVariable || node.metadata?.ipeQuantiteVariable;
-      // === AJOUT LOG: Vérifier si ipeVar existe ===
-      console.log(`[processVariables] Checking ipeVar for ${node.name}:`, ipeVar ? `Found (ID: ${ipeVar.id}, Name: ${ipeVar.name})` : 'Not Found');
-      // =======================================
+      });
+    }
+
+    // 4. Traiter toutes les variables IPE (logique conditionnelle basée sur isLastLevel)
+    const ipeVars = node.metadata?.ipeVariables || [];
+    ipeVars.forEach((ipeVar: any) => {
       if (ipeVar && ipeVar.id && ipeVar.name) {
-        console.log(`[processVariables] Found IPE quantity variable for ${node.name}: ID=${ipeVar.id}, Name=${ipeVar.name}`);
-        if (!summary.totalEntities.SmartAggregation_IPE_Quantite) summary.totalEntities.SmartAggregation_IPE_Quantite = 0;
-        summary.totalEntities.SmartAggregation_IPE_Quantite++;
-        
         const aggIPEAttributes = prepareCommonAttributes(ipeVar.name, ipeVar.id);
-        
         if (ipeVar.aggregations && typeof ipeVar.aggregations === 'object') {
-             // console.log(`[processVariables] Found IPE quantity aggregations for ${node.name}:`, ipeVar.aggregations); // Reduced log verbosity
-             const aggs = ipeVar.aggregations;
-             if (aggs['5min']?.id) aggIPEAttributes.Identifiant5Min = aggs['5min'].id;
-             if (aggs['1h']?.id) aggIPEAttributes.Identifiant1h = aggs['1h'].id;
-             if (aggs['4h']?.id) aggIPEAttributes.Identifiant4h = aggs['4h'].id;
-             if (aggs['8h']?.id) aggIPEAttributes.Identifiant8h = aggs['8h'].id;
-             if (aggs['1d']?.id) aggIPEAttributes.Identifiant1day = aggs['1d'].id;
-             // console.log(`[processVariables] IPE quantity Aggregation IDs added:`, aggIPEAttributes); // Reduced log verbosity
+          const aggs = ipeVar.aggregations;
+          if (aggs['5min']?.id) aggIPEAttributes.Identifiant5Min = aggs['5min'].id;
+          if (aggs['1h']?.id) aggIPEAttributes.Identifiant1h = aggs['1h'].id;
+          if (aggs['4h']?.id) aggIPEAttributes.Identifiant4h = aggs['4h'].id;
+          if (aggs['8h']?.id) aggIPEAttributes.Identifiant8h = aggs['8h'].id;
+          if (aggs['1d']?.id) aggIPEAttributes.Identifiant1day = aggs['1d'].id;
         }
-        // else {
-        //      console.log(`[processVariables] No valid IPE quantity aggregations found.`); // Reduced log verbosity
-        // }
-        
-        const collectionName = `aggregations_ipe_quantite_${level}`;
-        const entityName = `Smart.Aggregation_IPE_quantite_${rawLevel}`; // Corrected: lowercase 'quantite'
-         // Targeted log BEFORE adding
-        console.log(`[processVariables] Preparing to add to '${collectionName}': Entity='${entityName}', VarID='${aggIPEAttributes.VariableId}', VarName='${aggIPEAttributes.VariableName}'`);
-        addToCollection(collectionName, entityName, aggIPEAttributes);
+        if (isLastLevel) {
+          const entityCounterName = `SmartAggregation_IPE_${rawLevel}`;
+          if (!summary.totalEntities[entityCounterName]) summary.totalEntities[entityCounterName] = 0;
+          summary.totalEntities[entityCounterName]++;
+          const collectionName = `aggregations_ipe_${level}`;
+          const entityName = `Smart.Aggregation_IPE_${rawLevel}`;
+          addToCollection(collectionName, entityName, aggIPEAttributes);
+        } else {
+          if (!summary.totalEntities.SmartAggregation_IPE_Quantite) summary.totalEntities.SmartAggregation_IPE_Quantite = 0;
+          summary.totalEntities.SmartAggregation_IPE_Quantite++;
+          const collectionName = `aggregations_ipe_quantite_${level}`;
+          const entityName = `Smart.Aggregation_IPE_quantite_${rawLevel}`;
+          addToCollection(collectionName, entityName, aggIPEAttributes);
+        }
       }
-      // else {
-        // console.log(`[processVariables] No IPE quantity variable found for ${node.name}`); // Reduced log verbosity
-      // }
-      
-      // 5. Traiter la variable IPE (kg)
-      const ipeKgVar = node.metadata?.ipeKgVariable;
-      // === AJOUT LOG: Vérifier si ipeKgVar existe ===
-      console.log(`[processVariables] Checking ipeKgVar for ${node.name}:`, ipeKgVar ? `Found (ID: ${ipeKgVar.id}, Name: ${ipeKgVar.name})` : 'Not Found');
-      // ==========================================
-      if (ipeKgVar && ipeKgVar.id && ipeKgVar.name) {
-        console.log(`[processVariables] Found IPE kg variable for ${node.name}: ID=${ipeKgVar.id}, Name=${ipeKgVar.name}`);
-        if (!summary.totalEntities.SmartAggregation_IPE_Kg) summary.totalEntities.SmartAggregation_IPE_Kg = 0;
-        summary.totalEntities.SmartAggregation_IPE_Kg++;
-        
-        const aggIPEKgAttributes = prepareCommonAttributes(ipeKgVar.name, ipeKgVar.id);
-        
-        if (ipeKgVar.aggregations && typeof ipeKgVar.aggregations === 'object') {
-            // console.log(`[processVariables] Found IPE kg aggregations for ${node.name}:`, ipeKgVar.aggregations); // Reduced log verbosity
+    });
+
+    // 5. Traiter toutes les variables IPE KG (uniquement Niveaux INTERMEDIAIRES)
+    const ipeKgVars = node.metadata?.ipeKgVariables || [];
+    if (!isLastLevel) {
+      ipeKgVars.forEach((ipeKgVar: any) => {
+        if (ipeKgVar && ipeKgVar.id && ipeKgVar.name) {
+          const aggIPEKgAttributes = prepareCommonAttributes(ipeKgVar.name, ipeKgVar.id);
+          if (ipeKgVar.aggregations && typeof ipeKgVar.aggregations === 'object') {
             const aggs = ipeKgVar.aggregations;
             if (aggs['5min']?.id) aggIPEKgAttributes.Identifiant5Min = aggs['5min'].id;
             if (aggs['1h']?.id) aggIPEKgAttributes.Identifiant1h = aggs['1h'].id;
             if (aggs['4h']?.id) aggIPEKgAttributes.Identifiant4h = aggs['4h'].id;
             if (aggs['8h']?.id) aggIPEKgAttributes.Identifiant8h = aggs['8h'].id;
             if (aggs['1d']?.id) aggIPEKgAttributes.Identifiant1day = aggs['1d'].id;
-            // console.log(`[processVariables] IPE kg Aggregation IDs added:`, aggIPEKgAttributes); // Reduced log verbosity
+          }
+          const collectionName = `aggregations_ipe_kg_${level}`;
+          const entityName = `Smart.Aggregation_IPE_kg_${rawLevel}`;
+          addToCollection(collectionName, entityName, aggIPEKgAttributes);
         }
-        // else {
-        //      console.log(`[processVariables] No valid IPE kg aggregations found.`); // Reduced log verbosity
-        // }
-        
-        const collectionName = `aggregations_ipe_kg_${level}`;
-        const entityName = `Smart.Aggregation_IPE_kg_${rawLevel}`; // Corrected: lowercase 'kg'
-        // Targeted log BEFORE adding
-        console.log(`[processVariables] Preparing to add to '${collectionName}': Entity='${entityName}', VarID='${aggIPEKgAttributes.VariableId}', VarName='${aggIPEKgAttributes.VariableName}'`);
-        addToCollection(collectionName, entityName, aggIPEKgAttributes);
-      }
-      // else {
-        // console.log(`[processVariables] No IPE kg variable found for ${node.name}`); // Reduced log verbosity
-      // }
-    }
-    else {
-      console.log(`[processVariables] Skipping production and IPE variables for ${node.name} because level is 'machine'`); // AJOUT LOG (pour confirmation)
-      // console.log(`[processVariables] Skipping production and IPE variables for ${node.name} because level is 'machine'`); // Reduced log verbosity
+      });
     }
 
-    // Traiter l'état du capteur (uniquement pour les machines)
+    // 6. Traiter l'état du capteur (uniquement pour le DERNIER niveau)
     const stateVar = node.metadata?.stateVariable;
-    if (level === 'machine' && stateVar?.variableId) {
-        console.log(`[processVariables] Found state variable for machine ${node.name}: ID=${stateVar.variableId}`);
-        if (!summary.totalEntities.EtatCapteur) summary.totalEntities.EtatCapteur = 0;
-        summary.totalEntities.EtatCapteur++;
-        
-        if (!summary.etatCapteurs) {
-            summary.etatCapteurs = [];
-            console.warn(`[processVariables] Created etatCapteurs collection that was missing.`);
-        }
-        
+    if (isLastLevel && stateVar?.variableId) { // Condition isLastLevel ajoutée
+        console.log(`[processVariables] Found state variable for Last Level (${rawLevel}) ${node.name}: ID=${stateVar.variableId}`);
+        if (!summary.etatCapteurs) summary.etatCapteurs = []; // Safe check
         const stateAttributes = {
             NomCapteur: node.name,
             Etat: "false", // Default to false? Or read from somewhere?
             DerniereMaj: new Date().toISOString(),
             IdEtatCapteur: stateVar.variableId
         };
-        // console.log(`[processVariables] State sensor attributes prepared:`, stateAttributes); // Reduced log verbosity
-        
         summary.etatCapteurs.push({
             entity: 'Smart.EtatCapteur',
             attributes: stateAttributes
         });
-        // console.log(`[processVariables] Successfully added state sensor for ${node.name}. Current collection size: ${summary.etatCapteurs.length}`); // Reduced log verbosity
     }
-    // else if (level === 'machine') {
-      // console.log(`[processVariables] No state variable found for machine ${node.name}`); // Reduced log verbosity
-    // }
 
     const tEndProcessVars = performance.now();
-    // console.log(`[processVariables] END processing variables for node: ${node.name}. Duration: ${(tEndProcessVars - tStartProcessVars).toFixed(1)} ms`); // Reduced log verbosity
   };
 
   useEffect(() => {
@@ -620,7 +514,7 @@ export default function MendixGeneratorPage() {
         setIsValidating(true);
         const data = JSON.parse(iihStructure);
         // === DEBUG: Vérifier les variables BRUTES depuis localStorage ===
-        console.log("[DEBUG RAW DATA] Contenu de data.variables:", JSON.stringify(data.variables, null, 2)); // Ensure this line exists and is not commented out
+        // console.log("[DEBUG RAW DATA] Contenu de data.variables:", JSON.stringify(data.variables, null, 2)); // Ensure this line exists and is not commented out
         // =========================================================
         const hierarchyLevels = data.hierarchyData.levels;
         
@@ -675,7 +569,7 @@ export default function MendixGeneratorPage() {
     let missingEnergyType = 0;
     machineNodes.forEach((node: any) => {
       // === LOG AJOUTÉ : Metadata Machine AVANT flags ===
-      console.log(`[DEBUG propagate] Machine ${node.name} - Metadata AVANT flags:`, JSON.stringify(node.metadata));
+      // console.log(`[DEBUG propagate] Machine ${node.name} - Metadata AVANT flags:`, JSON.stringify(node.metadata));
       // ==============================================
       let energyType = (node.metadata?.energyType || node.metadata?.rawEnergyType || "Elec").toLowerCase();
       if (!node.metadata?.energyType && !node.metadata?.rawEnergyType) {
@@ -689,7 +583,7 @@ export default function MendixGeneratorPage() {
       if (energyType.includes('air')) node.metadata.isAir = true;
       
       // === LOG AJOUTÉ : Metadata Machine APRES flags ===
-      console.log(`[DEBUG propagate] Machine ${node.name} - Metadata APRES flags:`, JSON.stringify(node.metadata));
+      // console.log(`[DEBUG propagate] Machine ${node.name} - Metadata APRES flags:`, JSON.stringify(node.metadata));
       // =============================================
       
       // Propagation ascendante (multi-parent)
@@ -705,7 +599,7 @@ export default function MendixGeneratorPage() {
             const parentNode = nodeMap.get(parentLink.source);
             if (!parentNode) continue;
             // === LOG AJOUTÉ : Metadata Parent AVANT propagation ===
-            console.log(`[DEBUG propagate] Parent ${parentNode.name} - Metadata AVANT:`, JSON.stringify(parentNode.metadata));
+            // console.log(`[DEBUG propagate] Parent ${parentNode.name} - Metadata AVANT:`, JSON.stringify(parentNode.metadata));
             // ==================================================
             // Propager les flags
             if (node.metadata.isElec) parentNode.metadata.isElec = true;
@@ -713,7 +607,7 @@ export default function MendixGeneratorPage() {
             if (node.metadata.isEau) parentNode.metadata.isEau = true;
             if (node.metadata.isAir) parentNode.metadata.isAir = true;
             // === LOG AJOUTÉ : Metadata Parent APRES propagation ===
-            console.log(`[DEBUG propagate] Parent ${parentNode.name} - Metadata APRES:`, JSON.stringify(parentNode.metadata));
+            // console.log(`[DEBUG propagate] Parent ${parentNode.name} - Metadata APRES:`, JSON.stringify(parentNode.metadata));
             // ==================================================
             nextParents.push(parentNode.id);
           }
@@ -721,7 +615,7 @@ export default function MendixGeneratorPage() {
         currentNodeIds = nextParents;
       }
       // === LOG AJOUTÉ : Metadata Machine APRES propagation complète ===
-      console.log(`[DEBUG propagate] Machine ${node.name} - Metadata FINAL:`, JSON.stringify(node.metadata));
+      // console.log(`[DEBUG propagate] Machine ${node.name} - Metadata FINAL:`, JSON.stringify(node.metadata));
       // ==========================================================
     });
     // Statistiques finales
@@ -745,7 +639,7 @@ export default function MendixGeneratorPage() {
       if (!iihStructure) return;
       const data = JSON.parse(iihStructure);
       // === DEBUG: Vérifier les variables BRUTES depuis localStorage ===
-      console.log("[DEBUG RAW DATA] Contenu de data.variables:", JSON.stringify(data.variables, null, 2));
+      // console.log("[DEBUG RAW DATA] Contenu de data.variables:", JSON.stringify(data.variables, null, 2));
       // =========================================================
       const hierarchyLevels = data.hierarchyData.levels;
       console.log("[DEBUG] Data from localStorage:", JSON.stringify(data, null, 2));
@@ -758,14 +652,14 @@ export default function MendixGeneratorPage() {
       // Chercher un nœud qui *devrait* avoir des agrégations (on prend le premier trouvé avec une variable conso/prod/etc.)
       const nodeCheckAfterAssoc = fixedData.hierarchyData?.nodes.find((n: any) => n.metadata?.variable?.aggregations && Object.keys(n.metadata.variable.aggregations).length > 0);
       if (nodeCheckAfterAssoc) {
-          console.log(`[DEBUG AGGS - AFTER ASSOC] Node ${nodeCheckAfterAssoc.name} aggregations (variable):`, JSON.stringify(nodeCheckAfterAssoc.metadata.variable.aggregations));
+          // console.log(`[DEBUG AGGS - AFTER ASSOC] Node ${nodeCheckAfterAssoc.name} aggregations (variable):`, JSON.stringify(nodeCheckAfterAssoc.metadata.variable.aggregations));
       } else {
           // Essayer avec un autre type si variable n'a pas été trouvé
           const nodeCheckAlt = fixedData.hierarchyData?.nodes.find((n: any) => n.metadata?.productionKgVariable?.aggregations && Object.keys(n.metadata.productionKgVariable.aggregations).length > 0);
            if (nodeCheckAlt) {
-               console.log(`[DEBUG AGGS - AFTER ASSOC] Node ${nodeCheckAlt.name} aggregations (prodKg):`, JSON.stringify(nodeCheckAlt.metadata.productionKgVariable.aggregations));
+               // console.log(`[DEBUG AGGS - AFTER ASSOC] Node ${nodeCheckAlt.name} aggregations (prodKg):`, JSON.stringify(nodeCheckAlt.metadata.productionKgVariable.aggregations));
            } else {
-              console.log("[DEBUG AGGS - AFTER ASSOC] Aucun nœud trouvé avec des agrégations pour vérification.");
+              // console.log("[DEBUG AGGS - AFTER ASSOC] Aucun nœud trouvé avec des agrégations pour vérification.");
            }
       }
       const refNodeId = nodeCheckAfterAssoc?.id || fixedData.hierarchyData?.nodes.find((n: any) => n.metadata?.productionKgVariable?.aggregations && Object.keys(n.metadata.productionKgVariable.aggregations).length > 0)?.id;
@@ -776,16 +670,32 @@ export default function MendixGeneratorPage() {
       // === DEBUG AGGREGATIONS: Check AFTER propagateEnergyTypes ===
       const nodeToCheckAgain = refNodeId ? fixedData.hierarchyData?.nodes.find((n: any) => n.id === refNodeId) : null;
       if (nodeToCheckAgain) {
-          console.log(`[DEBUG AGGS - AFTER PROPAGATE] Node ${nodeToCheckAgain.name} metadata.variable.aggregations:`, JSON.stringify(nodeToCheckAgain.metadata?.variable?.aggregations));
-          console.log(`[DEBUG AGGS - AFTER PROPAGATE] Node ${nodeToCheckAgain.name} metadata.productionKgVariable.aggregations:`, JSON.stringify(nodeToCheckAgain.metadata?.productionKgVariable?.aggregations));
+          // console.log(`[DEBUG AGGS - AFTER PROPAGATE] Node ${nodeToCheckAgain.name} metadata.variable.aggregations:`, JSON.stringify(nodeToCheckAgain.metadata?.variable?.aggregations));
+          // console.log(`[DEBUG AGGS - AFTER PROPAGATE] Node ${nodeToCheckAgain.name} metadata.productionKgVariable.aggregations:`, JSON.stringify(nodeToCheckAgain.metadata?.productionKgVariable?.aggregations));
           // Ajouter d'autres types si nécessaire
       } else {
-           console.log("[DEBUG AGGS - AFTER PROPAGATE] Aucun nœud de référence trouvé pour vérifier les agrégations.");
+           // console.log("[DEBUG AGGS - AFTER PROPAGATE] Aucun nœud de référence trouvé pour vérifier les agrégations.");
       }
       // ============================================================
 
       await validateMendixEntities(requiredEntities);
       const mendixSummary = generateMendixSummary(fixedData);
+
+      // === AJOUT DEBUG: Vérifier le contenu FINAL de mendixSummary AVANT génération ===
+      // console.log("[DEBUG PAGE - FINAL SUMMARY CHECK] Contenu COMPLET de mendixSummary:", JSON.stringify(mendixSummary, null, 2)); // Keep commented unless needed
+
+      // === AJOUT DEBUG: Log Spécifique pour Contenu Aggregations LMAX ===
+      const lastLevelInfo = hierarchyLevels.find((l: any) => l.level === Math.max(...hierarchyLevels.map((h: any) => h.level)));
+      if (lastLevelInfo) {
+          const lastLevelNameLower = lastLevelInfo.name.toLowerCase().replace(/\\s+/g, '');
+          const prodKey = `aggregations_production_${lastLevelNameLower}`;
+          const ipeKey = `aggregations_ipe_${lastLevelNameLower}`;
+          // console.log(`[DEBUG PAGE - LMAX CONTENT CHECK] Summary content for key "${prodKey}":`, JSON.stringify(mendixSummary[prodKey], null, 2));
+          // console.log(`[DEBUG PAGE - LMAX CONTENT CHECK] Summary content for key "${ipeKey}":`, JSON.stringify(mendixSummary[ipeKey], null, 2));
+      } else {
+          // console.warn("[DEBUG PAGE - LMAX CONTENT CHECK] Could not determine last level name to check summary content.");
+      }
+      // =======================================================================
 
       // === AJOUT DEBUG: Vérifier le contenu FINAL de mendixSummary AVANT génération ===
       console.log("[DEBUG PAGE - FINAL SUMMARY CHECK] Contenu COMPLET de mendixSummary:", JSON.stringify(mendixSummary, null, 2));
@@ -795,7 +705,7 @@ export default function MendixGeneratorPage() {
       Object.keys(mendixSummary).forEach(key => {
         // Se concentrer sur les clés contenant "aggregations_"
         if (key.startsWith('aggregations_')) {
-          console.log(`[DEBUG SUMMARY CHECK] ${key}:`, JSON.stringify(mendixSummary[key], null, 2));
+          // console.log(`[DEBUG SUMMARY CHECK] ${key}:`, JSON.stringify(mendixSummary[key], null, 2));
         }
       });
       // ==========================================================
@@ -814,7 +724,7 @@ export default function MendixGeneratorPage() {
       
       const generatedCode = generateDynamicMendixCode(hierarchyLevels, mendixSummary);
       // === AJOUT DEBUG: Logguer le code Mendix généré COMPLET ===
-      console.log("[DEBUG PAGE - GENERATED MENDIX CODE]", generatedCode);
+      // console.log("[DEBUG PAGE - GENERATED MENDIX CODE]", generatedCode);
       // =======================================================
       setGeneratedCode(generatedCode);
       const cleanup = generateDynamicCleanupCode(requiredEntities, hierarchyLevels);
@@ -837,199 +747,154 @@ export default function MendixGeneratorPage() {
   
   // Fonction pour extraire le nom du nœud à partir du nom de la variable IIH
   const extractNodeNameFromVarName = (varName: string): string | null => {
-    // === LOG AJOUTÉ : Entrée de la fonction ===
-    console.log(`[DEBUG extractNodeName] Tentative d'extraction pour: "${varName}"`);
-    // ==========================================
+    // console.log(`[DEBUG extractNodeName START] Attempting extraction for: "${varName}"`); // START Log
     if (!varName) return null;
     const nameLower = varName.toLowerCase();
-    // Essayer d'extraire basé sur les préfixes connus
-    const prefixes = ['consommation_', 'etat_capteur_', 'production_kg_', 'production_', 'ipe_kg_', 'ipe_'];
+    // Ordre IMPORTANT: Vérifier les préfixes longs/spécifiques (_kg) avant les courts (production_, ipe_)
+    const prefixes = ['consommation_', 'etat_capteur_', 'production_kg_', 'ipe_kg_', 'production_', 'ipe_'];
     for (const prefix of prefixes) {
-      // === LOG AJOUTÉ : Test du préfixe ===
       const starts = nameLower.startsWith(prefix);
-      console.log(`[DEBUG extractNodeName] Test préfixe "${prefix}": ${starts}`);
-      // ==================================
+      // console.log(`[DEBUG extractNodeName] Test prefix "${prefix}": ${starts}`); // Keep this commented unless extreme detail needed
       if (starts) {
-        // Extraire la partie après le préfixe et nettoyer
         const extracted = varName.substring(prefix.length);
-        // === CORRECTION: Ajouter 'elec' à l'expression régulière ===
+        // Nettoyer les types d'énergie potentiels (pour conso)
         const cleanExtracted = extracted.replace(/^(électricité|elec|gaz|eau|air)_/i, '');
-        // ===========================================================
-        const finalName = sanitizeNodeNameForMatch(cleanExtracted); // Utiliser le même nettoyage
-        // === LOG AJOUTÉ : Succès ===
-        console.log(`[DEBUG extractNodeName] Succès! Préfixe="${prefix}", Extrait="${extracted}", Nettoyé="${cleanExtracted}", Final="${finalName}"`);
-        // ==========================
-        return finalName;
+        // *** IMPORTANT: Ne PAS nettoyer les suffixes _quantite ou _kg ici ***
+        //     Car la logique d'association doit pouvoir les distinguer.
+        //     Le nettoyage final pour obtenir le nom de base se fait avec sanitizeNodeNameForMatch.
+        const finalNameForMatch = sanitizeNodeNameForMatch(cleanExtracted); // Nettoie espaces, caractères spéciaux, etc. MAIS PAS _quantite/_kg
+        // console.log(`[DEBUG extractNodeName] Success! Prefix="${prefix}", Extracted="${extracted}", CleanedEnergy="${cleanExtracted}", FinalForMatch="${finalNameForMatch}"`); // Keep commented
+        // console.log(`[DEBUG extractNodeName RETURN] Var: "${varName}", Prefix: "${prefix}", RETURN KEY: "${finalNameForMatch}"`); // FINAL RETURN Log
+        return finalNameForMatch; // Retourne le nom nettoyé pour le MATCHING
       }
     }
-    // === LOG AJOUTÉ : Échec ===
-    console.warn(`[DEBUG extractNodeName] ÉCHEC: Aucun préfixe trouvé pour "${varName}"`);
-    // ========================
-    console.warn(`[extractNodeNameFromVarName] Impossible d'extraire le nom du nœud pour : ${varName}`);
-    return null; // Aucun préfixe connu trouvé
+    // console.warn(`[DEBUG extractNodeName FAIL] Var: "${varName}", No prefix found. Returning null.`); // FAIL Log
+    return null;
   };
   
   // Fonction pour associer les variables aux nœuds de la hiérarchie (NOUVELLE VERSION par NOM)
   const associateVariablesToNodes = (data: any) => {
-    const t0 = performance.now();
-    // Créer une copie profonde des données pour ne pas modifier l'original
-    const fixedData = JSON.parse(JSON.stringify(data));
-    
-    // 1. Vérifier les données d'entrée
-    if (!fixedData.variables || !Array.isArray(fixedData.variables) || fixedData.variables.length === 0) {
-      console.warn("[associateVariablesToNodes] Aucune variable externe fournie pour l'association.");
-      // Continuer pour formater les agrégations existantes
-    }
-    if (!fixedData.hierarchyData?.nodes || !Array.isArray(fixedData.hierarchyData.nodes)) {
-      console.error("[associateVariablesToNodes] Aucune donnée de nœud hiérarchique trouvée.");
-      return fixedData; // Ne peut pas continuer sans nœuds
-    }
-    
-    console.log("[DEBUG associateVariablesToNodes] Début de l'association par nom...");
-    
-    // 2. Pré-traiter les variables externes pour les regrouper par nom de nœud extrait
-    const variablesByExtractedName = new Map<string, any[]>();
-    let stateVarCount = 0;
-    console.log(`[DEBUG associateVariablesToNodes] Vérification de fixedData.variables: Existe=${!!fixedData.variables}, EstTableau=${Array.isArray(fixedData.variables)}, Longueur=${fixedData.variables?.length ?? 0}`);
-    if (fixedData.variables) {
-        fixedData.variables.forEach((variable: any, index: number) => {
-          console.log(`[DEBUG associateVariablesToNodes] Traitement variable ${index}:`, JSON.stringify(variable));
-          const originalVarName = variable.variableName; // Store original name
-          const extractedNameAttempt = extractNodeNameFromVarName(originalVarName);
+       // console.log("****** ASSOCIATE VARIABLES TO NODES CALLED ******");
+       const t0 = performance.now();
+       const fixedData = JSON.parse(JSON.stringify(data));
 
-          // === NOUVEAU LOG CIBLÉ 1 ===
-          if (originalVarName === "Consommation_électricité_PUITS_1") {
-              console.warn(`[DEBUG SPECIFIC VAR] Found target variable: "${originalVarName}", Extracted Name Attempt: "${extractedNameAttempt || 'NULL'}"`);
-          }
-          // =========================
+       // Vérification #1: Les variables existent-elles ?
+       if (!fixedData.variables || !Array.isArray(fixedData.variables) || fixedData.variables.length === 0) {
+          // console.warn("****** ASSOCIATE VARIABLES TO NODES: fixedData.variables est vide ou invalide. Sortie anticipée. ******", fixedData.variables); // LOG AJOUTÉ
+          return fixedData; /* Sortie anticipée */
+       }
+       // Vérification #2: Les nœuds existent-ils ?
+       if (!fixedData.hierarchyData?.nodes || !Array.isArray(fixedData.hierarchyData.nodes) || fixedData.hierarchyData.nodes.length === 0) {
+          // console.warn("****** ASSOCIATE VARIABLES TO NODES: fixedData.hierarchyData.nodes est vide ou invalide. Sortie anticipée. ******", fixedData.hierarchyData?.nodes); // LOG AJOUTÉ
+          return fixedData; /* Sortie anticipée */
+       }
 
-          console.log(`[DEBUG NAME EXTRACTION] Var: "${originalVarName}", Extracted Node Name Attempt: "${extractedNameAttempt || 'NULL'}"`);
+       // LOG AJOUTÉ: Si on passe les vérifications, afficher le nombre d'éléments
+       // console.log(`****** ASSOCIATE VARIABLES TO NODES: Données valides. Nb Variables: ${fixedData.variables.length}, Nb Noeuds: ${fixedData.hierarchyData.nodes.length} ******`);
 
-          // === CORRECTION : Utiliser extractedNameAttempt ===
-          if (extractedNameAttempt) {
-            const extractedName = extractedNameAttempt; // Utilisation correcte
-            if (!variablesByExtractedName.has(extractedName)) {
-              variablesByExtractedName.set(extractedName, []);
-            }
-            variablesByExtractedName.get(extractedName)!.push(variable);
-            // Correction : Utiliser originalVarName pour la vérification 'etat'
-            if (originalVarName?.toLowerCase().includes('etat')) {
-              stateVarCount++;
-            }
-          }
-        });
-    }
-    console.log(`[DEBUG associateVariablesToNodes] ${variablesByExtractedName.size} noms de nœuds uniques extraits des variables. ${stateVarCount} variables d'état potentielles indexées.`);
-    
-    // 3. Traiter chaque nœud de la hiérarchie
-    let nodesMatched = 0;
-    let stateVariablesAssociated = 0;
-    fixedData.hierarchyData.nodes.forEach((node: any) => {
-      if (!node.metadata) node.metadata = {};
-      const originalNodeName = node.name;
-      const sanitizedNodeName = sanitizeNodeNameForMatch(originalNodeName);
+       // console.log("[DEBUG associateVariablesToNodes] Start association..."); // Ce log devrait maintenant apparaître si les données sont valides
 
-      const matchingVariables = variablesByExtractedName.get(sanitizedNodeName) || [];
+       const variablesByExtractedName = new Map<string, any[]>();
+       if (fixedData.variables) {
+           fixedData.variables.forEach((variable: any) => {
+             const originalVarName = variable.variableName;
+             // IMPORTANT: extractNodeNameFromVarName retourne maintenant le nom nettoyé *pour le matching*,
+             //            il peut encore contenir _quantite ou _kg si présents.
+             const extractedNameForMatch = extractNodeNameFromVarName(originalVarName);
+             if (extractedNameForMatch) {
+               if (!variablesByExtractedName.has(extractedNameForMatch)) {
+                 variablesByExtractedName.set(extractedNameForMatch, []);
+               }
+               variablesByExtractedName.get(extractedNameForMatch)!.push(variable); // Stocker la variable entière
+             }
+           });
+       }
+       // console.log(`[DEBUG associateVariablesToNodes] ${variablesByExtractedName.size} unique extracted names mapped.`);
 
-      if (matchingVariables.length > 0) {
-        nodesMatched++;
-        console.debug(`[DEBUG associateVariablesToNodes] ${matchingVariables.length} variable(s) trouvée(s) pour le nœud ${node.name} (nom nettoyé: ${sanitizedNodeName})`);
+       let nodesMatched = 0;
+       let lastLevelNodesProcessed = 0; // Counter for last level nodes
+       const hierarchyLevels = fixedData.hierarchyData.levels || [];
+       let maxLevelNumber = 0;
+       hierarchyLevels.forEach((level: { level: number }) => {
+           if (level.level > maxLevelNumber) maxLevelNumber = level.level;
+       });
 
-        // === MODIFICATION : Initialiser un tableau pour les variables de consommation ===
-        node.metadata.consumptionVariables = [];
-        // ==========================================================================
 
-        matchingVariables.forEach((variable: any) => {
-          const variableNameLower = variable.variableName?.toLowerCase() || '';
-          const variableId = variable.id || variable.variableId || '';
-          const variableName = variable.variableName || '';
-          const formattedAggs = formatAggregations(variable.metadata?.aggregations);
+       fixedData.hierarchyData.nodes.forEach((node: any) => {
+         if (!node.metadata) node.metadata = {};
+         const sanitizedNodeName = sanitizeNodeNameForMatch(node.name);
+         const nodeLevelNum = node.metadata.levelNum || node.level; // Get node level
+         const isLastLevelNode = nodeLevelNum === maxLevelNumber;
 
-          console.log(`[DEBUG associateVariables] Testing variable name (lowercase): "${variableNameLower}" for node ${node.name}`);
+         if (isLastLevelNode) {
+             lastLevelNodesProcessed++;
+             // console.log(`[DEBUG associateVariablesToNodes LOOKUP - LAST LEVEL] Node: "${node.name}", Sanitized Key: "${sanitizedNodeName}"`); // LOOKUP log for LAST LEVEL
+         } else {
+              // Optional: Log for other levels if needed, but keep it less verbose
+              // console.log(`[DEBUG associateVariablesToNodes LOOKUP] Node: "${node.name}" (Level ${nodeLevelNum}), Sanitized Key: "${sanitizedNodeName}"`);
+         }
 
-          // IMPORTANT: Order matters! Check specific cases (like KG) before general ones.
-          if (variableNameLower.includes('conso') || variableNameLower.includes('consommation')) { // 1. Conso
-             console.log(`[DEBUG ASSIGN] Adding to node.metadata.consumptionVariables for ${node.name}: Var=${variableName}`);
-             // === MODIFICATION : Ajouter au tableau au lieu d'écraser ===
-             node.metadata.consumptionVariables.push({ id: variableId, name: variableName, aggregations: formattedAggs, type: variableNameLower.includes('électricité') || variableNameLower.includes('elec') ? 'Elec' : variableNameLower.includes('gaz') ? 'Gaz' : variableNameLower.includes('eau') ? 'Eau' : variableNameLower.includes('air') ? 'Air' : 'Unknown' });
-             // ========================================================
-             // Supprimer l'ancienne assignation : node.metadata.variable = ...
-          }
-          else if (variableNameLower.includes('ipe') && variableNameLower.includes('kg')) { // 2. Specific IPE KG
-             console.log(`[DEBUG associateVariables] Associating IPE KG for ${node.name}: ${variable.variableName}`);
-             node.metadata.ipeKgVariable = { id: variableId, name: variableName, aggregations: formattedAggs };
-          }
-          else if (variableNameLower.includes('prod') && variableNameLower.includes('kg')) { // 3. Specific Prod KG
-             console.log(`[DEBUG associateVariables] Associating PROD KG for ${node.name}: ${variable.variableName}`);
-             node.metadata.productionKgVariable = { id: variableId, name: variableName, aggregations: formattedAggs };
-          }
-          else if (variableNameLower.includes('ipe') || variableNameLower.includes('indicateur')) { // 4. General IPE QTE
-             console.log(`[DEBUG associateVariables] Associating IPE QTE for ${node.name}: ${variable.variableName}`);
-             node.metadata.ipeVariable = { id: variableId, name: variable.variableName, aggregations: formattedAggs };
-          }
-          else if (variableNameLower.includes('prod') || variableNameLower.includes('production')) { // 5. General Prod QTE
-             console.log(`[DEBUG associateVariables] Associating PROD QTE for ${node.name}: ${variable.variableName}`);
-             node.metadata.productionVariable = { id: variableId, name: variable.variableName, aggregations: formattedAggs };
-          }
-          else if (variableNameLower.includes('etat') || variableNameLower.includes('status') || variableNameLower.includes('état')) { // 6. Etat last
-             console.log(`[DEBUG ASSIGN] Assigning to node.metadata.stateVariable for ${node.name}: Var=${variableName}`);
-             node.metadata.stateVariable = { variableId: variableId, name: variableName };
-             stateVariablesAssociated++;
-          }
-        });
+         const matchingVariables = variablesByExtractedName.get(sanitizedNodeName) || [];
 
-        if (originalNodeName === "PUITS_1") {
-            console.warn(`[DEBUG FINAL METADATA in ASSOC] Node ${originalNodeName} final metadata after loop:`, JSON.stringify(node.metadata, null, 2));
-        }
-      } else {
-          // Log si aucun match, peut être réduit en production
-          // console.log(`[DEBUG associateVariablesToNodes] Aucune variable externe trouvée pour le nœud ${node.name} via le nom ${sanitizedNodeName}`);
-      }
-      
-      // 4. Formater les agrégations existantes (même si aucune variable externe n'a été associée)
-      // CELA SEMBLE REDONDANT ET POTENTIELLEMENT PROBLEM ATIQUE - Supprimons cette section.
-      // Les agrégations sont déjà formatées lors de l'association initiale.
-      /*
-      if (node.metadata.variable?.aggregations) {
-        node.metadata.variable.aggregations = formatAggregations(node.metadata.variable.aggregations);
-      }
-      if (node.metadata.productionVariable?.aggregations) {
-        node.metadata.productionVariable.aggregations = formatAggregations(node.metadata.productionVariable.aggregations);
-      }
-      if (node.metadata.productionKgVariable?.aggregations) {
-        node.metadata.productionKgVariable.aggregations = formatAggregations(node.metadata.productionKgVariable.aggregations);
-      }
-      if (node.metadata.ipeVariable?.aggregations) {
-        node.metadata.ipeVariable.aggregations = formatAggregations(node.metadata.ipeVariable.aggregations);
-      }
-      if (node.metadata.ipeKgVariable?.aggregations) {
-        node.metadata.ipeKgVariable.aggregations = formatAggregations(node.metadata.ipeKgVariable.aggregations);
-      }
-      */
-    });
-    
-    const t1 = performance.now();
-    console.info(`[associateVariablesToNodes] Association par nom terminée en ${(t1 - t0).toFixed(1)} ms. ${nodesMatched}/${fixedData.hierarchyData.nodes.length} nœuds ont trouvé des variables correspondantes. ${stateVariablesAssociated} variables d'état associées.`);
-    
-    // === LOG AJOUTÉ : Vérification FINALE DANS associateVariablesToNodes ===
-    const finalMachineNodeCheck = fixedData.hierarchyData?.nodes.find((n: any) => n.metadata?.level === 'Machine');
-    if (finalMachineNodeCheck) {
-      console.log("[DEBUG associateVariablesToNodes - FINAL CHECK] Node Machine stateVariable:", 
-        JSON.stringify(finalMachineNodeCheck.metadata?.stateVariable));
-    } else {
-      console.log("[DEBUG associateVariablesToNodes - FINAL CHECK] Aucun nœud Machine trouvé pour vérification finale.");
-    }
-    // ==================================================================
+         if (matchingVariables.length > 0) {
+           nodesMatched++;
+           node.metadata.consumptionVariables = []; // Initialiser
 
-    return fixedData;
-  };
+           // Log the match
+           if (isLastLevelNode) {
+               // console.log(`[DEBUG associateVariablesToNodes MATCH - LAST LEVEL] Node: "${node.name}", Key: "${sanitizedNodeName}", Found Vars: [${matchingVariables.map((v: any) => v.variableName).join(', ')}]`); // MATCH log for LAST LEVEL
+           } else {
+               // Optional: Log matches for other levels
+               // console.log(`[DEBUG associateVariablesToNodes MATCH] Node: "${node.name}" (Level ${nodeLevelNum}), Key: "${sanitizedNodeName}", Found Vars: [${matchingVariables.map((v: any) => v.variableName).join(', ')}]`);
+           }
+
+
+           matchingVariables.forEach((variable: any) => {
+             const variableNameLower = variable.variableName?.toLowerCase() || '';
+             const variableId = variable.id || variable.variableId || '';
+             const variableName = variable.variableName || '';
+             const formattedAggs = formatAggregations(variable.metadata?.aggregations);
+
+             if (variableNameLower.startsWith('production_kg_')) {
+               if (!node.metadata.productionKgVariables) node.metadata.productionKgVariables = [];
+               node.metadata.productionKgVariables.push({ id: variableId, name: variableName, aggregations: formattedAggs });
+             } else if (variableNameLower.startsWith('ipe_kg_')) {
+               if (!node.metadata.ipeKgVariables) node.metadata.ipeKgVariables = [];
+               node.metadata.ipeKgVariables.push({ id: variableId, name: variableName, aggregations: formattedAggs });
+             } else if (variableNameLower.startsWith('consommation_')) {
+               const energyTypeMatch = variableNameLower.match(/^consommation_(elec|électricité|gaz|eau|air)_/);
+               node.metadata.consumptionVariables.push({
+                 id: variableId,
+                 name: variableName,
+                 aggregations: formattedAggs,
+                 type: energyTypeMatch ? (energyTypeMatch[1] === 'électricité' ? 'Elec' : energyTypeMatch[1].charAt(0).toUpperCase() + energyTypeMatch[1].slice(1)) : 'Unknown'
+               });
+             } else if (variableNameLower.startsWith('production_')) {
+               if (!node.metadata.productionVariables) node.metadata.productionVariables = [];
+               node.metadata.productionVariables.push({ id: variableId, name: variableName, aggregations: formattedAggs });
+             } else if (variableNameLower.startsWith('ipe_')) {
+               if (!node.metadata.ipeVariables) node.metadata.ipeVariables = [];
+               node.metadata.ipeVariables.push({ id: variableId, name: variableName, aggregations: formattedAggs });
+             } else if (variableNameLower.startsWith('etat_capteur_')) {
+               node.metadata.stateVariable = { variableId: variableId, name: variableName };
+             }
+           });
+         } else if (isLastLevelNode) {
+             // Log if no variables are found for a last level node
+             // console.warn(`[DEBUG associateVariablesToNodes NO MATCH - LAST LEVEL] Node: "${node.name}", Key: "${sanitizedNodeName}" - No variables found.`);
+         }
+       });
+       const t1 = performance.now();
+       // console.info(`[associateVariablesToNodes] Association done in ${(t1 - t0).toFixed(1)} ms. ${nodesMatched} nodes matched. ${lastLevelNodesProcessed} last level nodes processed.`);
+       return fixedData;
+   };
 
   // Fonction auxiliaire pour formater les agrégations
   const formatAggregations = (aggregations: any) => {
     if (!aggregations || typeof aggregations !== 'object') return {}; // Retourner objet vide si null, undefined ou pas un objet
     
     // Log - Peut être réduit/supprimé en production
-    console.log(`[DEBUG formatAggregations] Structure d'agrégation brute reçue:`, JSON.stringify(aggregations));
+    // console.log(`[DEBUG formatAggregations] Structure d'agrégation brute reçue:`, JSON.stringify(aggregations));
     
     const formatted: Record<string, any> = {};
     
@@ -1050,7 +915,7 @@ export default function MendixGeneratorPage() {
         }
 
         if (!aggId) {
-           console.warn(`[DEBUG formatAggregations] ID d'agrégation non trouvé pour la clé ${key} dans l'objet:`, agg);
+           // console.warn(`[DEBUG formatAggregations] ID d'agrégation non trouvé pour la clé ${key} dans l'objet:`, agg);
            return; // Ignorer cette entrée
         }
 
@@ -1081,7 +946,7 @@ export default function MendixGeneratorPage() {
     }
     // Cas 2: Si c'est un tableau (moins courant mais géré)
     else if (Array.isArray(aggregations)) {
-      console.warn("[DEBUG formatAggregations] Structure d'agrégation en tableau détectée - traitement...");
+      // console.warn("[DEBUG formatAggregations] Structure d'agrégation en tableau détectée - traitement...");
       aggregations.forEach((agg: any) => {
         if (agg && typeof agg === 'object') {
           let cycleKey = '';
@@ -1090,7 +955,7 @@ export default function MendixGeneratorPage() {
           let aggType = agg.type || 'Sum';
 
           if (!aggId) {
-             console.warn("[DEBUG formatAggregations] Élément de tableau sans ID:", agg);
+             // console.warn("[DEBUG formatAggregations] Élément de tableau sans ID:", agg);
              return; // Ignorer
           }
 
@@ -1107,14 +972,14 @@ export default function MendixGeneratorPage() {
           if (cycleKey) {
             formatted[cycleKey] = { id: aggId, type: aggType, cycle: aggCycle };
           } else {
-             console.warn(`[DEBUG formatAggregations] Impossible de déterminer cycleKey pour l'élément de tableau:`, agg);
+             // console.warn(`[DEBUG formatAggregations] Impossible de déterminer cycleKey pour l'élément de tableau:`, agg);
           }
         }
       });
     }
     
     if (Object.keys(formatted).length > 0) {
-      console.log('[DEBUG formatAggregations] Identifiants d\'agrégation formatés:', formatted);
+      // console.log('[DEBUG formatAggregations] Identifiants d\'agrégation formatés:', formatted);
     }
     
     return formatted;
@@ -1284,6 +1149,12 @@ export default function MendixGeneratorPage() {
               <ArrowLeft className="h-6 w-6" />
             </button>
             <h1 className="text-3xl font-bold text-white">Générateur de Code Mendix</h1>
+            <a
+              href="/mendix-generator/migrate"
+              className="ml-4 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-base"
+            >
+              Migration ancien code
+            </a>
           </div>
         </div>
 

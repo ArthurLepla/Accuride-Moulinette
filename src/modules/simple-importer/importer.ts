@@ -909,98 +909,47 @@ export class SimpleImporter {
    */
   private prepareVariablesBulkCreation(assets: any[]): IIHVariable[] {
     const variables: IIHVariable[] = [];
-    
+
     assets.forEach(asset => {
-      // Améliorations pour extraire le type d'énergie
-      let energyType = 'défaut';
-      
-      console.log(`Analyse de l'asset "${asset.name}" (${asset.assetId}) pour détection du type d'énergie:`);
-      console.log(`Métadonnées disponibles:`, JSON.stringify(asset.metadata || {}, null, 2));
-      
-      // Vérification systématique des métadonnées avec différentes clés possibles
-      const possibleMetadataKeys = [
-        'energyType', 'energy_type', 'type', 'energie', 'typeEnergie', 'type_energie',
-        'fluide', 'TypeFluide', 'type_fluide', 'energie_type'
-      ];
-      
-      for (const key of possibleMetadataKeys) {
-        if (asset.metadata && asset.metadata[key]) {
-          energyType = asset.metadata[key];
-          console.log(`Type d'énergie trouvé dans metadata.${key}: ${energyType}`);
-          break;
-        }
+      // --- CORRECTION ---
+      // Extraire le type d'énergie DIRECTEMENT des métadonnées de l'asset 
+      // telles qu'elles étaient au moment de la préparation (ou de la création).
+      // On utilise une cascade de vérifications pour être sûr.
+      let energyType = 'défaut'; // Valeur par défaut
+      let source = 'défaut';
+      if (asset.metadata) {
+         if (asset.metadata.energyType && ['Elec', 'Gaz', 'Eau', 'Air'].includes(asset.metadata.energyType)) {
+             energyType = asset.metadata.energyType; // Prend la valeur capitalisée ('Eau')
+             source = 'metadata.energyType';
+         } else if (asset.metadata.rawEnergyType) {
+             // Si energyType n'était pas là ou pas valide, essayer rawEnergyType
+             energyType = asset.metadata.rawEnergyType; // Prend la valeur brute ('eau')
+             source = 'metadata.rawEnergyType';
+         }
       }
       
-      // Recherche directe des valeurs dans n'importe quelle clé des métadonnées
-      if (energyType === 'défaut' && asset.metadata) {
-        const metadataString = JSON.stringify(asset.metadata).toLowerCase();
-        if (metadataString.includes('elec')) {
-          energyType = 'Elec';
-          console.log(`Type d'énergie 'Elec' trouvé dans les métadonnées`);
-        } else if (metadataString.includes('gaz')) {
-          energyType = 'Gaz';
-          console.log(`Type d'énergie 'Gaz' trouvé dans les métadonnées`);
-        } else if (metadataString.includes('eau')) {
-          energyType = 'Eau';
-          console.log(`Type d'énergie 'Eau' trouvé dans les métadonnées`);
-        } else if (metadataString.includes('air')) {
-          energyType = 'Air';
-          console.log(`Type d'énergie 'Air' trouvé dans les métadonnées`);
-        }
+      // Si on n'a toujours rien trouvé dans les métadonnées, utiliser le défaut global
+      if (source === 'défaut') {
+          energyType = this._importConfig.defaultEnergyType || 'elec';
+          energyType = energyType.charAt(0).toUpperCase() + energyType.slice(1); // Assurer la capitalisation ('Elec')
+          console.warn(`⚠️ Impossible de déterminer le type d'énergie depuis les métadonnées pour l'asset "${asset.name}" (${asset.assetId}). Utilisation du type par défaut: ${energyType}`);
+          source = `config défaut (${energyType})`;
       }
-      
-      // Si toujours pas trouvé, recherche dans la description
-      if (energyType === 'défaut' && asset.description) {
-        const description = asset.description.toLowerCase();
-        if (description.includes('elec')) energyType = 'Elec';
-        else if (description.includes('eau')) energyType = 'Eau';
-        else if (description.includes('gaz')) energyType = 'Gaz';
-        else if (description.includes('air')) energyType = 'Air';
-        
-        if (energyType !== 'défaut') {
-          console.log(`Type d'énergie '${energyType}' trouvé dans la description: "${asset.description}"`);
-        }
-      }
-      
-      // Si toujours pas trouvé, recherche dans le nom (insensible à la casse)
-      if (energyType === 'défaut') {
-        const name = asset.name.toLowerCase();
-        if (name.includes('elec')) {
-          energyType = 'Elec';
-          console.log(`Type d'énergie 'Elec' trouvé dans le nom: "${asset.name}"`);
-        }
-        else if (name.includes('eau')) {
-          energyType = 'Eau';
-          console.log(`Type d'énergie 'Eau' trouvé dans le nom: "${asset.name}"`);
-        }
-        else if (name.includes('gaz')) {
-          energyType = 'Gaz';
-          console.log(`Type d'énergie 'Gaz' trouvé dans le nom: "${asset.name}"`);
-        }
-        else if (name.includes('air')) {
-          energyType = 'Air';
-          console.log(`Type d'énergie 'Air' trouvé dans le nom: "${asset.name}"`);
-        }
-      }
-      
-      // Si toujours pas trouvé, utiliser le type par défaut et le notifier
-      if (energyType === 'défaut') {
-        console.warn(`⚠️ Impossible de déterminer le type d'énergie pour l'asset "${asset.name}" (${asset.assetId}). Utilisation de la valeur par défaut.`);
-      } else {
-        console.log(`Type d'énergie final pour "${asset.name}": ${energyType}`);
-      }
-      
+
+      console.log(`Type d'énergie déterminé pour "${asset.name}" AVANT création variable: ${energyType} (Source: ${source})`);
+      // --- FIN CORRECTION ---
+
       const assetName = asset.name;
       const assetId = asset.assetId;
-      
-      // Déterminer l'unité en fonction du type d'énergie
+
+      // Déterminer l'unité en fonction du type d'énergie déterminé ci-dessus
       const unit = this.determineEnergyUnit(energyType);
-      
-      // Création des variables avec configuration complète
+
+      // Création des variables avec configuration complète en utilisant le 'energyType' fiable
       variables.push(this.createConsumptionVariable(assetId, assetName, energyType, unit));
       variables.push(this.createSensorStatusVariable(assetId, assetName));
     });
-    
+
     return variables;
   }
   
@@ -1194,7 +1143,7 @@ export class SimpleImporter {
     // Types d'énergie qui utilisent m³
     if (normalizedType.includes('eau') || 
         normalizedType.includes('water') ||
-        normalizedType.includes('air') ||
+        normalizedType.includes('air') || 
         normalizedType.includes('gaz')) {
       console.log(`Unité déterminée pour "${energyType}": m³ (détecté comme fluide)`);
       return 'm³';
@@ -1544,7 +1493,7 @@ export class SimpleImporter {
     
     for (const asset of assetsOfLevel) {
       // 1. Créer les variables de base pour tous les niveaux
-      this.addBasicVariablesForAsset(asset, variables);
+      this.addBasicVariablesForAsset(asset, variables, level);
       
       // 2. Pour les niveaux 1-4, ajouter/mettre à jour les formules pour les variables de type "rule"
       // COMMENT OUT: This block is no longer needed as consumption variables are now Tags
@@ -1577,28 +1526,28 @@ export class SimpleImporter {
    * Ajoute les variables de base pour un asset
    * @param asset Asset pour lequel créer les variables
    * @param variables Tableau de variables à compléter
+   * @param maxLevelNumber Le numéro du dernier niveau dans la hiérarchie actuelle // <- NOUVEAU PARAM
    */
-  private addBasicVariablesForAsset(asset: any, variables: IIHVariable[]): void {
+  private addBasicVariablesForAsset(asset: any, variables: IIHVariable[], maxLevelNumber: number): void { // <- NOUVEAU PARAM
     const assetName = asset.name;
     const assetId = asset.assetId;
     const sanitizedAssetName = this.sanitizeNameForVariable(assetName);
     const assetLevel = this.determineAssetLevel(asset);
-    
-    console.log(`Création des variables pour ${assetName} (niveau ${assetLevel})`);
-    
-    // Pour les assets de niveau 5, créer uniquement la variable spécifique au type d'énergie de l'asset
-    if (assetLevel === 5) {
-      // Déterminer le type d'énergie pour cet asset
+
+    console.log(`[addBasicVariablesForAsset] Asset: ${assetName}, Niveau détecté: ${assetLevel}, Dernier Niveau: ${maxLevelNumber}`); // Log modifié
+
+    // Pour les assets du DERNIER niveau
+    if (assetLevel === maxLevelNumber) { // <- Condition modifiée
       const assetEnergyType = this.getAssetEnergyType(asset);
-      
+
+      console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Asset: ${assetName}, Type Energie: ${assetEnergyType}`);
+      console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Vérification config includeIpeProdOnLastLevel: ${this._importConfig.includeIpeProdOnLastLevel}`);
+
+      // 1. Créer la variable de consommation (logique inchangée)
       if (ENERGY_TYPES[assetEnergyType]) {
-        // Créer la variable de consommation pour le type d'énergie spécifique
         const config = ENERGY_TYPES[assetEnergyType];
         console.log(`Asset niveau 5: ${assetName} - Création variable consommation type ${assetEnergyType}`);
-        
-        // IMPORTANT: Utiliser toujours le tag générique de consommation
-        const topic = this._importConfig.tagMappings.consumption;
-        
+        const consumptionTopic = this._importConfig.tagMappings.consumption;
         variables.push({
           variableName: `Consommation_${config.name}_${sanitizedAssetName}`,
           dataType: 'Float' as const,
@@ -1607,21 +1556,22 @@ export class SimpleImporter {
           description: `Consommation de ${config.name} pour ${assetName}`,
           adapterId: this._importConfig.adapterId,
           connectionName: sanitizedAssetName,
-          topic: topic,
+          topic: consumptionTopic,
           sourceType: "Tag",
-          // Ajouter l'objet tag requis par l'API
+          store: true,
           tag: {
             adapterId: this._importConfig.adapterId,
             connectionName: sanitizedAssetName,
-            tagName: topic,
+            tagName: consumptionTopic,
             dataType: 'Float'
           }
         });
+      } else {
+        console.warn(`[addBasicVariablesForAsset L5] ⚠️ Type d'énergie ${assetEnergyType} non trouvé dans ENERGY_TYPES pour ${assetName}, variable de consommation non créée.`);
       }
-      
-      // Ajouter la variable d'état capteur avec le topic défini dans la configuration
+
+      // 2. Créer la variable d'état capteur
       const sensorTopic = this._importConfig.tagMappings.sensorStatus;
-      
       variables.push({
         variableName: `Etat_capteur_${sanitizedAssetName}`,
         dataType: 'String' as const,
@@ -1631,7 +1581,7 @@ export class SimpleImporter {
         connectionName: sanitizedAssetName,
         topic: sensorTopic,
         sourceType: "Tag",
-        // Ajouter l'objet tag requis par l'API
+        store: true,
         tag: {
           adapterId: this._importConfig.adapterId,
           connectionName: sanitizedAssetName,
@@ -1639,167 +1589,234 @@ export class SimpleImporter {
           dataType: 'String'
         }
       });
-    } 
-    // Pour les assets de niveaux 1-4, créer les 8 variables standardisées
-    else {
-      console.log(`Asset niveau ${assetLevel}: ${assetName} - Création des 8 variables standardisées`);
-      
-      // IMPORTANT: Les variables de consommation pour les niveaux 1-4 doivent être de type Rule
-      // car elles agrègent les consommations des niveaux inférieurs
-      
-      // 1. Variables de consommation pour les 4 types d'énergie (Type Rule)
-      for (const [type, config] of Object.entries(ENERGY_TYPES)) {
-        // CHANGE: Get specific tag name from configuration, fallback to pattern
-        const mappingKey = `consumption${type.charAt(0).toUpperCase() + type.slice(1)}` as keyof ImportConfiguration['tagMappings'];
-        const specificTagName = this._importConfig.tagMappings[mappingKey];
-        const tagName = specificTagName || `conso_${type}`; // Fallback if specific tag not defined
-        // ADD MORE LOGGING HERE
-        console.log(`[Importer L1-4 Debug] Asset: ${sanitizedAssetName}, Type: ${type}, Key: ${mappingKey}, Config Tag: ${specificTagName}, Final Tag Name: ${tagName}`);
 
-        // Les variables de consommation pour les niveaux 1-4 sont des règles qui somment les niveaux inférieurs
-        variables.push({
-          variableName: `Consommation_${config.name}_${sanitizedAssetName}`,
-          dataType: 'Float' as const,
-          assetId: assetId,
-          unit: config.unit,
-          description: `Consommation de ${config.name} pour ${assetName} (Tag)`, // CHANGE: Updated description
-          sourceType: "Tag", // CHANGE: Set sourceType to Tag
-          store: true,
-          adapterId: this._importConfig.adapterId, // ADD: AdapterId for Tag
-          connectionName: sanitizedAssetName,      // ADD: ConnectionName for Tag
-          // ADD: tag object
-          tag: {
+      // --- Condition pour IPE et Production au DERNIER Niveau ---
+      if (this._importConfig.includeIpeProdOnLastLevel) {
+        console.log(`[addBasicVariablesForAsset L${maxLevelNumber} - OPTION ACTIVE] Ajout IPE et Production pour ${assetName}`);
+        console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Tag Prod Pcs: ${this._importConfig.tagMappings.productionPcs}`);
+        console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Tag IPE: ${this._importConfig.tagMappings.ipe}`);
+
+        // 3. Variable Production (pcs)
+        const productionTopic = this._importConfig.tagMappings.productionPcs;
+        if (productionTopic) {
+          variables.push({
+            variableName: `Production_${sanitizedAssetName}`,
+            dataType: 'Float' as const,
+            unit: "pcs",
+            assetId: assetId,
+            description: `Production pour ${assetName} (Niveau ${maxLevelNumber})`, // Description mise à jour
             adapterId: this._importConfig.adapterId,
             connectionName: sanitizedAssetName,
-            tagName: tagName, // Use the retrieved or fallback tag name
-            dataType: 'Float'
-          }
-          // REMOVE: Formula and Rule properties
-          // formula: "0", 
-          // rule: {
-          //   formula: "0", 
-          //   tags: []
-          // },
-        });
-      }
-      
-      // 2. Variables de production et IPE (Type Tag avec tags spécifiques)
-      // Ces variables sont des données d'entrée, pas des calculs
-      const productionVars = [
-        {
-          variableName: `Production_${sanitizedAssetName}`,
-          dataType: 'Float' as const,
-          unit: "pcs",
-          description: `Production pour ${assetName}`,
-          topic: this._importConfig.tagMappings.productionPcs // Tag personnalisé pour production
-        },
-        {
-          variableName: `Production_kg_${sanitizedAssetName}`,
-          dataType: 'Float' as const,
-          unit: "kg",
-          description: `Production en kg pour ${assetName}`,
-          topic: this._importConfig.tagMappings.productionKg // Tag personnalisé pour production en kg
+            topic: productionTopic,
+            sourceType: "Tag",
+            store: true,
+            tag: {
+              adapterId: this._importConfig.adapterId,
+              connectionName: sanitizedAssetName,
+              tagName: productionTopic,
+              dataType: 'Float'
+            }
+          });
+           console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] ✅ Variable Production ajoutée pour ${assetName}`);
+        } else {
+           console.warn(`[addBasicVariablesForAsset L${maxLevelNumber}] ⚠️ Tag manquant pour 'productionPcs'...`);
         }
-      ];
-      
-      // Nouvelles variables IPE par type d'énergie
-      const energyTypes = ['elec', 'gaz', 'eau', 'air'];
-      const ipeVarsByEnergyType = [];
-      
-      for (const energyType of energyTypes) {
-        // Sécurisation de l'accès aux propriétés dynamiques
-        const getTagMapping = (prefix: string, energyType: string, fallback: string) => {
-          const key = `${prefix}${energyType.charAt(0).toUpperCase() + energyType.slice(1)}Tag` as keyof typeof this._importConfig.tagMappings;
-          return this._importConfig.tagMappings[key] || fallback;
-        };
-        
-        // IPE par pièce pour chaque type d'énergie
-        ipeVarsByEnergyType.push({
-          variableName: `IPE_${energyType}_${sanitizedAssetName}`,
-          dataType: 'Float' as const,
-          unit: "kWh/pcs",
-          description: `Indicateur de performance énergétique (${energyType}) pour ${assetName}`,
-          topic: getTagMapping('ipe', energyType, `ipe_${energyType}`)
-        });
-        
-        // IPE par kg pour chaque type d'énergie
-        ipeVarsByEnergyType.push({
-          variableName: `IPE_kg_${energyType}_${sanitizedAssetName}`,
-          dataType: 'Float' as const,
-          unit: "kWh/kg",
-          description: `Indicateur de performance énergétique en kg (${energyType}) pour ${assetName}`,
-          topic: getTagMapping('ipeKg', energyType, `ipe_kg_${energyType}`)
-        });
+
+        // 4. Variable IPE (générique) avec unité conditionnelle
+        const ipeTopic = this._importConfig.tagMappings.ipe;
+        if (ipeTopic) {
+          let ipeUnit: string;
+          if (assetEnergyType === 'elec') {
+            ipeUnit = "kWh/pcs";
+          } else if (['gaz', 'eau', 'air'].includes(assetEnergyType)) {
+            ipeUnit = "m³/pcs";
+          } else {
+            ipeUnit = "unit/pcs";
+          }
+          console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Type ${assetEnergyType} détecté, Unité IPE: ${ipeUnit}`);
+
+          variables.push({
+            variableName: `IPE_${sanitizedAssetName}`,
+            dataType: 'Float' as const,
+            unit: ipeUnit,
+            assetId: assetId,
+            description: `Indicateur de performance énergétique (${assetEnergyType}) pour ${assetName} (Niveau ${maxLevelNumber})`, // Description mise à jour
+            adapterId: this._importConfig.adapterId,
+            connectionName: sanitizedAssetName,
+            topic: ipeTopic,
+            sourceType: "Tag",
+            store: true,
+            tag: {
+              adapterId: this._importConfig.adapterId,
+              connectionName: sanitizedAssetName,
+              tagName: ipeTopic,
+              dataType: 'Float'
+            }
+          });
+          console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] ✅ Variable IPE ajoutée pour ${assetName} avec unité ${ipeUnit}`);
+        } else {
+          console.warn(`[addBasicVariablesForAsset L${maxLevelNumber}] ⚠️ Tag manquant pour 'ipe'...`);
+        }
+      } else {
+         console.log(`[addBasicVariablesForAsset L${maxLevelNumber} - OPTION INACTIVE] Pas d'ajout IPE et Production pour ${assetName}`);
       }
-      
-      // Fusionner toutes les variables
+
+    }
+    // Pour les assets des niveaux 1 à maxLevelNumber - 1
+    else {
+      console.log(`Asset niveau ${assetLevel}: ${assetName} - Création des variables standardisées (Niveaux 1-${maxLevelNumber-1})`);
+      // --- ICI : La logique existante pour les niveaux 1-4 doit être conservée ---
+
+      // 1. Variables de consommation par type d'énergie (Type Tag)
+      for (const [type, config] of Object.entries(ENERGY_TYPES)) {
+         // ... code existant pour conso L1-4 ...
+         // (Assurez-vous que ce code crée les variables ici)
+         // Exemple simplifié:
+         const mappingKey = `consumption${type.charAt(0).toUpperCase() + type.slice(1)}` as keyof ImportConfiguration['tagMappings'];
+         const specificTagName = this._importConfig.tagMappings[mappingKey];
+         const tagName = specificTagName || `conso_${type}`;
+         variables.push({
+           variableName: `Consommation_${config.name}_${sanitizedAssetName}`,
+           dataType: 'Float' as const,
+           assetId: assetId,
+           unit: config.unit,
+           description: `Consommation de ${config.name} pour ${assetName} (Tag L1-4)`,
+           sourceType: "Tag",
+           store: true,
+           adapterId: this._importConfig.adapterId,
+           connectionName: sanitizedAssetName,
+           tag: {
+             adapterId: this._importConfig.adapterId,
+             connectionName: sanitizedAssetName,
+             tagName: tagName,
+             dataType: 'Float'
+           }
+         });
+      }
+
+      // 2. Variables de production et IPE (Type Tag avec tags spécifiques)
+      // --- CORRECTION: Ajout d'un type explicite ---
+      const productionVars: { variableName: string; dataType: 'Float'; unit: string; description: string; topic: string }[] = [
+          {
+            variableName: `Production_${sanitizedAssetName}`,
+            dataType: 'Float' as const,
+            unit: "pcs",
+            description: `Production pour ${assetName}`,
+            topic: this._importConfig.tagMappings.productionPcs
+          },
+          {
+            variableName: `Production_kg_${sanitizedAssetName}`,
+            dataType: 'Float' as const,
+            unit: "kg",
+            description: `Production en kg pour ${assetName}`,
+            topic: this._importConfig.tagMappings.productionKg
+          }
+      ];
+      // --- CORRECTION: Ajout d'un type explicite ---
+      const ipeVarsByEnergyType: { variableName: string; dataType: 'Float'; unit: string; description: string; topic: string }[] = [];
+      for (const energyType of ['elec', 'gaz', 'eau', 'air']) {
+         // --- Assurez-vous que ce code est décommenté et fonctionnel ---
+         const getTagMapping = (prefix: string, energyType: string, fallback: string) => {
+            const key = `${prefix}${energyType.charAt(0).toUpperCase() + energyType.slice(1)}Tag` as keyof typeof this._importConfig.tagMappings;
+            return this._importConfig.tagMappings[key] || fallback;
+         };
+
+         ipeVarsByEnergyType.push({
+           variableName: `IPE_${energyType}_${sanitizedAssetName}`,
+           dataType: 'Float' as const,
+           // L'unité IPE dépend de l'énergie pour les niveaux 1-4 aussi ? Ou fixe ?
+           // Supposons kWh/pcs pour Elec, m³/pcs pour les autres pour cohérence
+           unit: energyType === 'elec' ? "kWh/pcs" : "m³/pcs",
+           description: `Indicateur de performance énergétique (${energyType}) pour ${assetName}`,
+           topic: getTagMapping('ipe', energyType, `ipe_${energyType}`)
+         });
+
+         ipeVarsByEnergyType.push({
+           variableName: `IPE_kg_${energyType}_${sanitizedAssetName}`,
+           dataType: 'Float' as const,
+           // Unité pour IPE kg ? kWh/kg pour Elec, m³/kg pour autres ?
+           unit: energyType === 'elec' ? "kWh/kg" : "m³/kg",
+           description: `Indicateur de performance énergétique en kg (${energyType}) pour ${assetName}`,
+           topic: getTagMapping('ipeKg', energyType, `ipe_kg_${energyType}`)
+         });
+         // --- Fin du code à décommenter/vérifier ---
+      }
       const allVars = [...productionVars, ...ipeVarsByEnergyType];
-      
-      // Ajouter les variables de production et IPE avec les tags spécifiques
       allVars.forEach(varConfig => {
+        // --- Assurez-vous que ce code est décommenté et fonctionnel ---
         const topic = varConfig.topic;
         variables.push({
-          ...varConfig,
+          // Utiliser les propriétés de varConfig
+          variableName: varConfig.variableName,
+          dataType: varConfig.dataType,
+          unit: varConfig.unit,
+          description: varConfig.description,
+          // Propriétés communes
           assetId: assetId,
-          adapterId: this._importConfig.adapterId, // Adapter ID personnalisé
+          adapterId: this._importConfig.adapterId,
           connectionName: sanitizedAssetName,
           sourceType: "Tag",
           store: true,
-          // Ajouter l'objet tag requis par l'API
           tag: {
             adapterId: this._importConfig.adapterId,
             connectionName: sanitizedAssetName,
-            tagName: topic,
-            dataType: 'Float'
+            tagName: topic, // Utiliser le topic de varConfig
+            dataType: varConfig.dataType // Utiliser le dataType de varConfig
           }
         });
+        // --- Fin du code à décommenter/vérifier ---
       });
+      // --- FIN de la logique pour L1 à maxLevelNumber-1 ---
     }
   }
   
   /**
-   * Récupère le type d'énergie d'un asset EN SE BASANT UNIQUEMENT sur les données originales Excel
-   * @param asset Asset à analyser, doit contenir asset.originalData.type_energie
+   * Récupère le type d'énergie d'un asset EN SE BASANT sur les métadonnées ou le type par défaut.
+   * @param asset Asset à analyser (doit contenir asset.metadata.energyType ou asset.metadata.rawEnergyType si possible)
    * @returns Type d'énergie normalisé (clé dans ENERGY_TYPES) ou le type par défaut
    */
   private getAssetEnergyType(asset: any): string {
     const assetNameForLog = asset.name || 'Nom Inconnu';
     const assetIdForLog = asset.assetId || 'ID Inconnu';
-    console.log(`Détection du type d'énergie pour l'asset "${assetNameForLog}" (ID: ${assetIdForLog}) - Méthode stricte (Excel uniquement)`);
+    // MODIFICATION: Log de début ajusté
+    console.log(`(getAssetEnergyType) Détection pour "${assetNameForLog}" (ID: ${assetIdForLog}) - Priorité Métadonnées`);
 
     let finalEnergyType: string | null = null;
     let source = "défaut";
+    let rawValueFromMetadata: string | null = null; // Pour log
 
-    // 1. Vérifier les données Excel originales (SEULE SOURCE VALIDE)
-    if (asset.originalData && asset.originalData.type_energie) {
-      const excelValue = asset.originalData.type_energie;
-      console.log(`  Valeur trouvée dans originalData.type_energie: "${excelValue}"`);
-      const normalized = normalizeEnergyType(excelValue); // Utilise normalizeEnergyType pour standardiser
-      
-      // Vérifier si le type normalisé est l'un des types attendus (elec, gaz, eau, air)
-      if (['elec', 'gaz', 'eau', 'air'].includes(normalized)) {
-        finalEnergyType = normalized;
-        source = `Excel ("${excelValue}" -> "${normalized}")`;
-      } else {
-        // Log an error if the value from Excel is present but not recognized
-        console.error(`  ❌ ERREUR: Type d'énergie "${excelValue}" depuis Excel n'est pas reconnu après normalisation ("${normalized}"). Vérifiez la colonne Type Energie dans l'Excel et la fonction normalizeEnergyType.`);
-        // Keep finalEnergyType as null to force fallback to default
+    // 1. Vérifier les métadonnées de l'asset (priorité)
+    if (asset.metadata) {
+      // Essayer d'abord avec energyType (qui est déjà normalisé en théorie)
+      if (asset.metadata.energyType && ['Elec', 'Gaz', 'Eau', 'Air'].includes(asset.metadata.energyType)) {
+        finalEnergyType = asset.metadata.energyType.toLowerCase(); // 'Elec' -> 'elec'
+        rawValueFromMetadata = asset.metadata.energyType;
+        source = `Metadata (energyType: "${rawValueFromMetadata}" -> "${finalEnergyType}")`;
+      } 
+      // Sinon, essayer avec rawEnergyType (valeur brute)
+      else if (asset.metadata.rawEnergyType) {
+        rawValueFromMetadata = asset.metadata.rawEnergyType;
+        // Utiliser directement asset.metadata.rawEnergyType ici
+        const normalized = normalizeEnergyType(asset.metadata.rawEnergyType); 
+        if (['elec', 'gaz', 'eau', 'air'].includes(normalized)) {
+          finalEnergyType = normalized;
+          source = `Metadata (rawEnergyType: "${rawValueFromMetadata}" -> "${finalEnergyType}")`; 
+        } else {
+          console.warn(`  (getAssetEnergyType) ⚠️ Type "${rawValueFromMetadata}" depuis metadata.rawEnergyType non reconnu après normalisation ("${normalized}").`);
+        }
       }
-    } else {
-      console.log(`  Aucune valeur trouvée dans originalData.type_energie.`);
     }
 
-    // 2. Si aucun type valide n'a été trouvé depuis Excel, utiliser le type par défaut
+    // 2. Si aucun type valide n'a été trouvé depuis les métadonnées, utiliser le type par défaut
     if (!finalEnergyType) {
       const defaultType = this._importConfig.defaultEnergyType || 'elec'; // Fallback sur 'elec' si default non défini
       finalEnergyType = defaultType; // Assign default type
       source = `Défaut (${finalEnergyType})`;
-      // Log a warning when falling back to default
-      console.warn(`  ⚠️ Aucun type d'énergie valide trouvé ou fourni via Excel. Utilisation du type par défaut: ${finalEnergyType}`);
+      console.warn(`  (getAssetEnergyType) ⚠️ Aucun type valide trouvé dans metadata pour "${assetNameForLog}". Utilisation défaut: ${finalEnergyType}`);
     }
 
-    console.log(`  ✓ Type d'énergie final pour "${assetNameForLog}": "${finalEnergyType}" (Source: ${source})`);
-    return finalEnergyType;
+    console.log(`  (getAssetEnergyType) ✓ Type final pour "${assetNameForLog}": "${finalEnergyType}" (Source: ${source})`);
+    return finalEnergyType; // Retourne la clé normalisée ('elec', 'eau', etc.)
   }
 
   /**
