@@ -1207,6 +1207,11 @@ export class SimpleImporter {
       // 1. Classer les assets par niveau (1 à 5)
       const assetsByLevel = this.groupAssetsByLevel(assets);
       
+      // Déterminer le véritable niveau maximum de la hiérarchie qui contient des assets
+      const populatedLevels = Object.keys(assetsByLevel).map(Number).filter(k => assetsByLevel[k]?.length > 0);
+      const trueMaxLevel = populatedLevels.length > 0 ? Math.max(...populatedLevels) : 0;
+      console.log(`Niveau maximum réel de la hiérarchie avec des assets: ${trueMaxLevel}`);
+
       console.log('Répartition des assets par niveau:');
       Object.entries(assetsByLevel).forEach(([level, assetList]) => {
         console.log(`Niveau ${level}: ${assetList.length} assets`);
@@ -1217,7 +1222,7 @@ export class SimpleImporter {
       
       // Commencer par le niveau 5 (le plus bas) pour pouvoir
       // construire les formules correctement pour les niveaux supérieurs
-      for (let level = 5; level >= 1; level--) {
+      for (let level = trueMaxLevel; level >= 1; level--) { // Modifier la boucle pour commencer à trueMaxLevel
         if (assetsByLevel[level] && assetsByLevel[level].length > 0) {
           console.log(`Préparation des variables pour les assets de niveau ${level}...`);
           
@@ -1225,7 +1230,8 @@ export class SimpleImporter {
           const variablesForLevel = await this.prepareVariablesForLevel(
             level, 
             assetsByLevel[level],
-            assetsByLevel // Passer tous les assets par niveau pour les formules
+            assetsByLevel,
+            trueMaxLevel // Passer le véritable niveau maximum
           );
           
           allVariablesToCreate = [...allVariablesToCreate, ...variablesForLevel];
@@ -1487,13 +1493,14 @@ export class SimpleImporter {
   private async prepareVariablesForLevel(
     level: number, 
     assetsOfLevel: any[], 
-    allAssetsByLevel: Record<number, any[]>
+    allAssetsByLevel: Record<number, any[]>,
+    trueMaxLevel: number // Nouveau paramètre
   ): Promise<IIHVariable[]> {
     const variables: IIHVariable[] = [];
     
     for (const asset of assetsOfLevel) {
       // 1. Créer les variables de base pour tous les niveaux
-      this.addBasicVariablesForAsset(asset, variables, level);
+      this.addBasicVariablesForAsset(asset, variables, trueMaxLevel); // Passer trueMaxLevel ici
       
       // 2. Pour les niveaux 1-4, ajouter/mettre à jour les formules pour les variables de type "rule"
       // COMMENT OUT: This block is no longer needed as consumption variables are now Tags
@@ -1528,20 +1535,20 @@ export class SimpleImporter {
    * @param variables Tableau de variables à compléter
    * @param maxLevelNumber Le numéro du dernier niveau dans la hiérarchie actuelle // <- NOUVEAU PARAM
    */
-  private addBasicVariablesForAsset(asset: any, variables: IIHVariable[], maxLevelNumber: number): void { // <- NOUVEAU PARAM
+  private addBasicVariablesForAsset(asset: any, variables: IIHVariable[], hierarchyMaxLevel: number): void { // <- NOUVEAU PARAM
     const assetName = asset.name;
     const assetId = asset.assetId;
     const sanitizedAssetName = this.sanitizeNameForVariable(assetName);
     const assetLevel = this.determineAssetLevel(asset);
 
-    console.log(`[addBasicVariablesForAsset] Asset: ${assetName}, Niveau détecté: ${assetLevel}, Dernier Niveau: ${maxLevelNumber}`); // Log modifié
+    console.log(`[addBasicVariablesForAsset] Asset: ${assetName}, Niveau détecté: ${assetLevel}, Max Niveau Hiérarchie: ${hierarchyMaxLevel}`);
 
-    // Pour les assets du DERNIER niveau
-    if (assetLevel === maxLevelNumber) { // <- Condition modifiée
+    // Pour les assets du DERNIER niveau de la hiérarchie
+    if (assetLevel === hierarchyMaxLevel) {
       const assetEnergyType = this.getAssetEnergyType(asset);
 
-      console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Asset: ${assetName}, Type Energie: ${assetEnergyType}`);
-      console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Vérification config includeIpeProdOnLastLevel: ${this._importConfig.includeIpeProdOnLastLevel}`);
+      console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] Asset: ${assetName}, Type Energie: ${assetEnergyType}`);
+      console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] Vérification config includeIpeProdOnLastLevel: ${this._importConfig.includeIpeProdOnLastLevel}`);
 
       // 1. Créer la variable de consommation (logique inchangée)
       if (ENERGY_TYPES[assetEnergyType]) {
@@ -1592,34 +1599,34 @@ export class SimpleImporter {
 
       // --- Condition pour IPE et Production au DERNIER Niveau ---
       if (this._importConfig.includeIpeProdOnLastLevel) {
-        console.log(`[addBasicVariablesForAsset L${maxLevelNumber} - OPTION ACTIVE] Ajout IPE et Production pour ${assetName}`);
-        console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Tag Prod Pcs: ${this._importConfig.tagMappings.productionPcs}`);
-        console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Tag IPE: ${this._importConfig.tagMappings.ipe}`);
+        console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel} - OPTION ACTIVE] Ajout IPE et Production pour ${assetName}`);
+        console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] Tag Prod Pcs L5: ${this._importConfig.tagMappings.productionPcsL5}`);
+        console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] Tag IPE: ${this._importConfig.tagMappings.ipe}`);
 
         // 3. Variable Production (pcs)
-        const productionTopic = this._importConfig.tagMappings.productionPcs;
-        if (productionTopic) {
+        const productionL5Topic = this._importConfig.tagMappings.productionPcsL5; // Utilise le tag spécifique L5
+        if (productionL5Topic) {
           variables.push({
             variableName: `Production_${sanitizedAssetName}`,
             dataType: 'Float' as const,
             unit: "pcs",
             assetId: assetId,
-            description: `Production pour ${assetName} (Niveau ${maxLevelNumber})`, // Description mise à jour
+            description: `Production pour ${assetName} (Niveau ${hierarchyMaxLevel} - L5 spécifique)`, 
             adapterId: this._importConfig.adapterId,
             connectionName: sanitizedAssetName,
-            topic: productionTopic,
+            topic: productionL5Topic,
             sourceType: "Tag",
             store: true,
             tag: {
               adapterId: this._importConfig.adapterId,
               connectionName: sanitizedAssetName,
-              tagName: productionTopic,
+              tagName: productionL5Topic,
               dataType: 'Float'
             }
           });
-           console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] ✅ Variable Production ajoutée pour ${assetName}`);
+           console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] ✅ Variable Production (L5 spécifique) ajoutée pour ${assetName} avec tag ${productionL5Topic}`);
         } else {
-           console.warn(`[addBasicVariablesForAsset L${maxLevelNumber}] ⚠️ Tag manquant pour 'productionPcs'...`);
+           console.warn(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] ⚠️ Tag manquant pour 'productionPcsL5'...`);
         }
 
         // 4. Variable IPE (générique) avec unité conditionnelle
@@ -1633,14 +1640,14 @@ export class SimpleImporter {
           } else {
             ipeUnit = "unit/pcs";
           }
-          console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] Type ${assetEnergyType} détecté, Unité IPE: ${ipeUnit}`);
+          console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] Type ${assetEnergyType} détecté, Unité IPE: ${ipeUnit}`);
 
           variables.push({
             variableName: `IPE_${sanitizedAssetName}`,
             dataType: 'Float' as const,
             unit: ipeUnit,
             assetId: assetId,
-            description: `Indicateur de performance énergétique (${assetEnergyType}) pour ${assetName} (Niveau ${maxLevelNumber})`, // Description mise à jour
+            description: `Indicateur de performance énergétique (${assetEnergyType}) pour ${assetName} (Niveau ${hierarchyMaxLevel} - L5 spécifique)`, 
             adapterId: this._importConfig.adapterId,
             connectionName: sanitizedAssetName,
             topic: ipeTopic,
@@ -1653,19 +1660,19 @@ export class SimpleImporter {
               dataType: 'Float'
             }
           });
-          console.log(`[addBasicVariablesForAsset L${maxLevelNumber}] ✅ Variable IPE ajoutée pour ${assetName} avec unité ${ipeUnit}`);
+          console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] ✅ Variable IPE ajoutée pour ${assetName} avec unité ${ipeUnit}`);
         } else {
-          console.warn(`[addBasicVariablesForAsset L${maxLevelNumber}] ⚠️ Tag manquant pour 'ipe'...`);
+          console.warn(`[addBasicVariablesForAsset L${hierarchyMaxLevel}] ⚠️ Tag manquant pour 'ipe'...`);
         }
       } else {
-         console.log(`[addBasicVariablesForAsset L${maxLevelNumber} - OPTION INACTIVE] Pas d'ajout IPE et Production pour ${assetName}`);
+         console.log(`[addBasicVariablesForAsset L${hierarchyMaxLevel} - OPTION INACTIVE] Pas d'ajout IPE et Production pour ${assetName}`);
       }
 
     }
-    // Pour les assets des niveaux 1 à maxLevelNumber - 1
+    // Pour les assets des niveaux 1 à hierarchyMaxLevel - 1 (Niveaux supérieurs)
     else {
-      console.log(`Asset niveau ${assetLevel}: ${assetName} - Création des variables standardisées (Niveaux 1-${maxLevelNumber-1})`);
-      // --- ICI : La logique existante pour les niveaux 1-4 doit être conservée ---
+      console.log(`Asset niveau ${assetLevel}: ${assetName} - Création des variables standardisées (Niveaux supérieurs 1-${hierarchyMaxLevel-1})`);
+      // --- ICI : La logique existante pour les niveaux 1-4 doit être conservée ---\n
 
       // 1. Variables de consommation par type d'énergie (Type Tag)
       for (const [type, config] of Object.entries(ENERGY_TYPES)) {
