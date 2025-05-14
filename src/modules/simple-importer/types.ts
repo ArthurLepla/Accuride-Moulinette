@@ -31,6 +31,7 @@ export interface ImportConfiguration {
     ipeKgEauTag?: string;     // Tag pour IPE kg eau
     ipeKgAirTag?: string;     // Tag pour IPE kg air
     ipe?: string;               // <-- AJOUT: Tag IPE générique (pour L5 si activé)
+    productionPcsL5?: string; // Tag pour la production en pièces au niveau 5 si activé
   };
   // Autres configurations potentielles
   defaultEnergyType?: string; // Type d'énergie par défaut si non détecté
@@ -62,6 +63,7 @@ export const DEFAULT_IMPORT_CONFIG: ImportConfiguration = {
     ipeKgEauTag: "IPE_eau_kg",
     ipeKgAirTag: "IPE_air_kg",
     ipe: "ipe", // <-- AJOUT
+    productionPcsL5: "prod", // <-- AJOUT pour L5
   },
   defaultEnergyType: "elec",
   includeIpeProdOnLastLevel: false, // <-- AJOUT (désactivé par défaut)

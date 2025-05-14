@@ -635,10 +635,10 @@ export function FlexibleImportValidationModal({
                       </label>
                       <input
                         type="text"
-                        value={importConfig.tagMappings.productionPcs}
-                        onChange={(e) => handleTagMappingChange('productionPcs', e.target.value)}
+                        value={importConfig.tagMappings.productionPcsL5 || 'prod'}
+                        onChange={(e) => handleTagMappingChange('productionPcsL5', e.target.value)}
                         className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="prod_quantite"
+                        placeholder="prod"
                       />
                        <p className="text-xs text-gray-500">Utilisé pour le niveau 5 car l'option est activée.</p>
                     </div>
