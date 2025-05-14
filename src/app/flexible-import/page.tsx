@@ -12,10 +12,10 @@ import { ImportValidationModal } from '@/components/ImportValidationModal';
 import { FlexibleImportValidationModal } from '@/components/FlexibleImportValidationModal';
 import AppLayout from '@/components/layout/AppLayout';
 import { Modal, Button, Group, Alert, Select, TextInput, ActionIcon, Paper, Text, LoadingOverlay } from '@mantine/core';
-import { IconTrash } from '@tabler/icons-react';
+import { IconTrash, IconCheck, IconX } from '@tabler/icons-react';
 import { CustomImportConfigurator } from './CustomImportConfigurator';
-import { CustomImportConfig, ImportResponse } from '@/modules/custom-importer/types';
-import { CustomImporter } from '@/modules/custom-importer/importer';
+import { CustomImportConfig } from '@/modules/custom-importer/types';
+import { importCustomData } from '@/modules/custom-importer';
 import { AuthConfig } from '@/modules/simple-importer/types';
 
 interface LevelConfig {
@@ -42,6 +42,13 @@ export default function FlexibleImportPage() {
   const [iihImportSuccess, setIihImportSuccess] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importResultMessage, setImportResultMessage] = useState<string | null>(null);
+  const [showImportProgress, setShowImportProgress] = useState<boolean>(false);
+  const [importSteps, setImportSteps] = useState<Array<{name: string, status: 'pending' | 'loading' | 'success' | 'error', message?: string}>>([
+    { name: "Création des assets", status: "pending" },
+    { name: "Création des variables", status: "pending" },
+    { name: "Configuration des agrégations", status: "pending" },
+    { name: "Application des politiques de rétention", status: "pending" }
+  ]);
 
   // Prepare initial hierarchy config for the configurator
   const initialHierarchy = {
@@ -284,6 +291,15 @@ export default function FlexibleImportPage() {
     setIihImportSuccess(false);
     setImportResultMessage(null);
     setErrors([]); // Clear previous errors
+    
+    // Réinitialiser les étapes et afficher le modal de progression
+    setImportSteps([
+      { name: "Création des assets", status: "pending" },
+      { name: "Création des variables", status: "pending" },
+      { name: "Configuration des agrégations", status: "pending" },
+      { name: "Application des politiques de rétention", status: "pending" }
+    ]);
+    setShowImportProgress(true);
 
     try {
         // 1. Get AuthConfig from localStorage
@@ -296,33 +312,90 @@ export default function FlexibleImportPage() {
             throw new Error("Configuration d'authentification invalide.");
         }
 
-        // 2. Instantiate the importer
-        const importer = new CustomImporter(authConfig, config);
-
-        // 3. Perform the import
-        console.log("Calling importer.importFlexibleData with:", { importedDataCount: importedData.length });
-        const result: ImportResponse = await importer.importFlexibleData(importedData);
-
-        // 4. Handle the result
-        if (result.success) {
-            console.log("Custom import successful:", result.message);
-            setIihImportSuccess(true);
-            setImportResultMessage(result.message || "Importation personnalisée réussie !");
-        } else {
-            console.error("Custom import failed:", result.error);
-            // Ensure error is a string
-            const errorMessage = typeof result.error === 'string' ? result.error : (result.error?.message || "Une erreur inconnue est survenue lors de l'import.");
-            throw new Error(errorMessage); 
+        // 2. Perform the import with progress tracking
+        console.log("Calling importCustomData with:", { importedDataCount: importedData.length });
+        
+        // Mettre à jour l'étape actuelle
+        setImportSteps(prev => prev.map((step, idx) => 
+            idx === 0 ? { ...step, status: 'loading' } : step
+        ));
+        
+        // Utiliser un timeout pour permettre au state de se mettre à jour et au modal de s'afficher
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        try {
+            // Essayer l'import
+            const result = await importCustomData(config, importedData);
+            
+            // Vérifier le résultat de l'import
+            if (result.success) {
+                console.log("Custom import successful:", result.message);
+                
+                // Mettre à jour toutes les étapes comme réussies
+                setImportSteps(prev => prev.map(step => ({
+                    ...step,
+                    status: 'success'
+                })));
+                
+                setIihImportSuccess(true);
+                setImportResultMessage('Importation personnalisée réussie !');
+            } else {
+                // En cas d'erreur
+                console.error("Custom import failed:", result.error);
+                
+                // Marquer les étapes appropriées comme échouées
+                const newSteps = [...importSteps];
+                if (result.assetsCount === 0) {
+                    newSteps[0].status = 'error';
+                    newSteps[0].message = "Erreur lors de la création des assets";
+                } else if (result.variablesCount === 0) {
+                    newSteps[0].status = 'success';
+                    newSteps[1].status = 'error';
+                    newSteps[1].message = "Erreur lors de la création des variables";
+                } else if (result.aggregationsCount === 0) {
+                    newSteps[0].status = 'success';
+                    newSteps[1].status = 'success';
+                    newSteps[2].status = 'error';
+                    newSteps[2].message = "Erreur lors de la configuration des agrégations";
+                } else {
+                    newSteps[0].status = 'success';
+                    newSteps[1].status = 'success';
+                    newSteps[2].status = 'success';
+                    newSteps[3].status = 'error';
+                    newSteps[3].message = "Erreur lors de l'application des politiques de rétention";
+                }
+                setImportSteps(newSteps);
+                
+                // Ensure error is a string
+                const errorMessage = typeof result.error === 'string' ? result.error : (result.error?.message || "Une erreur inconnue est survenue lors de l'import.");
+                throw new Error(errorMessage);
+            }
+        } catch (error) {
+            throw error; // Re-throw to be caught by the outer try-catch
         }
-
     } catch (error) {
       console.error("Custom import process failed:", error);
       const errorMessage = error instanceof Error ? error.message : "Erreur inconnue lors du processus d'import personnalisé.";
       setErrors([errorMessage]);
       setImportResultMessage(`Échec de l'import : ${errorMessage}`); // Display error message
       setIihImportSuccess(false);
+      
+      // Marquer l'étape actuelle comme échouée si aucune étape n'est déjà marquée
+      if (!importSteps.some(step => step.status === 'error')) {
+          setImportSteps(prev => {
+              const loading = prev.findIndex(step => step.status === 'loading');
+              if (loading >= 0) {
+                  const newSteps = [...prev];
+                  newSteps[loading].status = 'error';
+                  newSteps[loading].message = errorMessage;
+                  return newSteps;
+              }
+              return prev;
+          });
+      }
     } finally {
       setIsImporting(false); // Clear loading state
+      // Ne pas fermer le modal de progression - l'utilisateur le fermera manuellement
     }
   };
 
@@ -530,7 +603,7 @@ export default function FlexibleImportPage() {
                        <Alert 
                          color={iihImportSuccess ? "green" : "red"}
                          title={iihImportSuccess ? "Succès" : "Échec"}
-                         icon={iihImportSuccess ? <CheckIcon /> : <XIcon />}
+                         icon={iihImportSuccess ? <IconCheck size={16} /> : <IconX size={16} />}
                          withCloseButton 
                          onClose={() => setImportResultMessage(null)}
                        >
@@ -618,11 +691,72 @@ export default function FlexibleImportPage() {
             }}
           />
         )}
+
+        {/* Modal pour afficher le progrès de l'import */}
+        <Modal 
+          opened={showImportProgress} 
+          onClose={() => iihImportSuccess || !isImporting ? setShowImportProgress(false) : null}
+          withCloseButton={!isImporting}
+          closeOnClickOutside={false}
+          closeOnEscape={!isImporting}
+          title="Progression de l'import"
+          size="lg"
+        >
+          <div className="space-y-4">
+            {importSteps.map((step, index) => (
+              <div key={index} className="flex items-center space-x-4">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  step.status === 'pending' ? 'bg-gray-200' :
+                  step.status === 'loading' ? 'bg-blue-200 animate-pulse' :
+                  step.status === 'success' ? 'bg-green-200' :
+                  'bg-red-200'
+                }`}>
+                  {step.status === 'pending' && <span className="text-gray-500">{index + 1}</span>}
+                  {step.status === 'loading' && <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>}
+                  {step.status === 'success' && <svg className="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>}
+                  {step.status === 'error' && <svg className="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>}
+                </div>
+                <div className="flex-1">
+                  <p className={`font-medium ${
+                    step.status === 'pending' ? 'text-gray-600' :
+                    step.status === 'loading' ? 'text-blue-600' :
+                    step.status === 'success' ? 'text-green-600' :
+                    'text-red-600'
+                  }`}>{step.name}</p>
+                  {step.message && <p className="text-sm text-red-500">{step.message}</p>}
+                </div>
+              </div>
+            ))}
+            
+            {/* Résumé et actions */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              {iihImportSuccess ? (
+                <div className="text-center">
+                  <p className="text-green-600 font-medium mb-3">Import réussi !</p>
+                  <Button color="green" onClick={() => setShowImportProgress(false)}>Fermer</Button>
+                </div>
+              ) : errors.length > 0 ? (
+                <div className="text-center">
+                  <p className="text-red-600 font-medium mb-3">Des erreurs sont survenues durant l'import</p>
+                  <Button color="red" onClick={() => setShowImportProgress(false)}>Fermer</Button>
+                </div>
+              ) : isImporting ? (
+                <div className="text-center">
+                  <p className="text-blue-600 font-medium mb-3">Import en cours...</p>
+                  <div className="animate-pulse">Veuillez patienter</div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </Modal>
       </div>
     </AppLayout>
   );
-}
-
-// Placeholder icons (replace with actual imports if needed)
-const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>;
-const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>; 
+} 

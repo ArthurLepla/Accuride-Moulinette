@@ -2,6 +2,31 @@ import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import http from 'http';
 
+// Fonction utilitaire pour extraire récursivement tous les nœuds de type 'Variable' ou 'tag'
+function extractTags(node: any): any[] {
+  let tags: any[] = [];
+  if (Array.isArray(node)) {
+    node.forEach(child => {
+      tags = tags.concat(extractTags(child));
+    });
+  } else if (node && typeof node === 'object') {
+    if (node.type === 'Variable' || node.type === 'tag') {
+      tags.push({
+        id: node.id || node.nodeId || node.name,
+        name: node.name,
+        ...node
+      });
+    }
+    if (node.children && Array.isArray(node.children)) {
+      tags = tags.concat(extractTags(node.children));
+    }
+    if (node.nodes && Array.isArray(node.nodes)) {
+      tags = tags.concat(extractTags(node.nodes));
+    }
+  }
+  return tags;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -46,7 +71,11 @@ export async function GET(
     console.log('API Browse - URL finale:', url);
     
     // Effectuer la requête pour explorer les nœuds de l'adapter
-    console.log('API Browse - Envoi de la requête avec token:', authConfig.token.substring(0, 5) + '...');
+    if (typeof authConfig.token === 'string') {
+      console.log('API Browse - Envoi de la requête avec token:', authConfig.token.substring(0, 5) + '...');
+    } else {
+      console.warn('API Browse - Le token est manquant ou non valide:', authConfig.token);
+    }
     
     // Augmenter le délai d'attente pour la navigation qui peut prendre du temps
     const controller = new AbortController();
@@ -70,9 +99,29 @@ export async function GET(
     }
     
     const data = await response.json();
-    console.log('API Browse - Succès - Nœuds récupérés dans l\'adapter');
-    
-    return NextResponse.json(data);
+    console.log('API Browse - Structure brute:', JSON.stringify(data).substring(0, 500));
+
+    // Cas 1 : tags à plat
+    if (Array.isArray(data.tags)) {
+      return NextResponse.json({ tags: data.tags });
+    }
+
+    // Cas 2 : topics -> tags
+    if (Array.isArray(data.topics)) {
+      const allTags = data.topics.flatMap((topic: any) =>
+        Array.isArray(topic.tags)
+          ? topic.tags.map((tag: any) => ({
+              ...tag,
+              connectionName: topic.connectionName || tag.connectionName
+            }))
+          : []
+      );
+      return NextResponse.json({ tags: allTags });
+    }
+
+    // Sinon, rien trouvé
+    console.warn('API Browse - Pas de champ tags ni topics dans la réponse:', data);
+    return NextResponse.json({ tags: [] });
   } catch (error) {
     console.error('API Browse - Exception:', error);
     const message = error instanceof Error 
