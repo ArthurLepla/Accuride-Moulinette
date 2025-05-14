@@ -38,7 +38,11 @@ export async function GET() {
     console.log('API Adapters - URL finale:', url);
     
     // Effectuer la requête sans spécifier d'agent
-    console.log('API Adapters - Envoi de la requête avec token:', authConfig.token.substring(0, 5) + '...');
+    if (typeof authConfig.token === 'string' && authConfig.token.length > 0) {
+      console.log('API Adapters - Envoi de la requête avec token:', authConfig.token.substring(0, 5) + '...');
+    } else {
+      console.warn('API Adapters - Token manquant ou invalide:', authConfig.token);
+    }
     const response = await fetch(url, {
       method: 'GET',
       headers: {
